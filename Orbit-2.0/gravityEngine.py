@@ -4,7 +4,7 @@ import copy
 import random
 
 G_CONSTANT = 1.0
-TRAIL_LENGTH = 200
+TRAIL_LENGTH = 10
 TRAIL_DELTA = 10
 
 class CelestialBody:
@@ -42,9 +42,9 @@ class GravityEngine:
             CelestialBody(  Vector2D(+85, +0),  Vector2D(+0,  +4),  1,      color_h = 0),
 
             #Cool Visuals
-            #CelestialBody(  Vector2D(+0,  +0),  Vector2D(+0,  +0),  1000,   color_h = 1, color_s = 0),
-            #CelestialBody(  Vector2D(+50, +0),  Vector2D(+0,  +5),  1,      color_h = 0),
-            #CelestialBody(  Vector2D(-50, +0),  Vector2D(+0,  -5),  1,      color_h = 55),
+            # CelestialBody(  Vector2D(+0,  +0),  Vector2D(+0,  +0),  1000,   color_h = 1, color_s = 0),
+            # CelestialBody(  Vector2D(+50, +0),  Vector2D(+0,  +5),  1,      color_h = 0),
+            # CelestialBody(  Vector2D(-50, +0),  Vector2D(+0,  -5),  1,      color_h = 55),
 
 
             # CelestialBody(  Vector2D(-70, +0),    Vector2D(+0,  -4),    1,      color_h = 105),
