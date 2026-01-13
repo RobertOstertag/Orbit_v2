@@ -2,7 +2,6 @@ import copy
 import math
 
 from pyglet.window import Window, key
-from pyglet.text import Label
 import pyglet
 
 from gravityEngine import CelestialBody
