@@ -6,11 +6,15 @@ class Vector2D:
     def __add__(self, other):
         if isinstance(other, Vector2D):
             return Vector2D(self.x + other.x, self.y + other.y)
+        elif (isinstance(other, float) or isinstance(other, int)):
+            return Vector2D(self.x + other, self.y + other)
         return NotImplemented
     
     def __sub__(self, other):
         if isinstance(other, Vector2D):
             return Vector2D(self.x - other.x, self.y - other.y)
+        elif (isinstance(other, float) or isinstance(other, int)):
+            return Vector2D(self.x - other, self.y - other)
         return NotImplemented
 
     def __mul__(self, other):
