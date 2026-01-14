@@ -4,7 +4,7 @@ import copy
 import random
 
 G_CONSTANT = 1.0
-TRAIL_LENGTH = 10
+TRAIL_LENGTH = 100
 TRAIL_DELTA = 10
 
 class CelestialBody:
@@ -82,8 +82,8 @@ class GravityEngine:
         for body in self.body_list:
             body.pos = body.pos + (body.vel * self.dt)
 
-        #update positions of every body
         self.update_acc()
+        #update positions of every body
 
         for body in self.body_list:
             body.vel = body.vel + (body.acc * self.dt)
@@ -187,3 +187,6 @@ class GravityEngine:
         temp_vel = body.pos - body.prev_pos
         new_vel = temp_vel * scale
         body.prev_pos = body.pos - new_vel
+
+if __name__ == "__main__":
+    print("herllo")
