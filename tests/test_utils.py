@@ -111,6 +111,22 @@ def test_Vector2D_division_scalar_float():
     assert math.isclose(vector_sum.x, vector_a.x / scalar, abs_tol=1e-09)
     assert math.isclose(vector_sum.y, vector_a.y / scalar, abs_tol=1e-09)
 
+#--------------------Magnitude--------------------
+def test_Vector2D_magnitude():
+    vector_a = Vector2D(5, 7)
+    magn = vector_a.magnitude()
+
+    assert magn == math.sqrt(vector_a.x * vector_a.x + vector_a.y * vector_a.y)
+
+#--------------------Normalize--------------------
+def test_Vector2D_normalize():
+    vector_a = Vector2D(5, 7)
+    norm = vector_a.normalize()
+
+    assert norm.x == vector_a.x / math.sqrt(vector_a.x * vector_a.x + vector_a.y * vector_a.y)
+    assert norm.y == vector_a.y / math.sqrt(vector_a.x * vector_a.x + vector_a.y * vector_a.y)
+
+
 if __name__ == "__main__":
     test_Vector2D_init()
     test_Vector2D_addition_vector()
@@ -125,3 +141,6 @@ if __name__ == "__main__":
     test_Vector2D_division_vector()
     test_Vector2D_division_scalar_int()
     test_Vector2D_division_scalar_float()
+    test_Vector2D_magnitude()
+    test_Vector2D_normalize()
+

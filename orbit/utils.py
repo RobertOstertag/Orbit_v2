@@ -1,3 +1,5 @@
+import math
+
 class Vector2D:
     def __init__(self, pos_x:float, pos_y:float):
         self.x = pos_x
@@ -30,6 +32,16 @@ class Vector2D:
         elif (isinstance(other, float) or isinstance(other, int)):
             return Vector2D(self.x / other, self.y / other)
         return NotImplemented
+    
+    def magnitude(self):
+        return math.sqrt(self.x * self.x + self.y * self.y)
+    
+    def normalize(self):
+        magn = self.magnitude()
+        if (magn != 0):
+            return Vector2D(self.x / magn, self.y / magn)
+        else:
+            raise ValueError('Vector2D is of length 0')
 
 class Color:
     def __init__(self, h, s, v):
