@@ -3,7 +3,6 @@ import math
 import copy
 import random
 
-G_CONSTANT = 1.0
 TRAIL_LENGTH = 100
 TRAIL_DELTA = 10
 
@@ -112,10 +111,11 @@ class GravityEngine:
 
 
     def update_acc(self):
-        distance_x = 0.0
-        distance_y = 0.0
-        distance_total = 0.0
-        angle_to_object = 0.0
+        direction_x = 0.0
+        direction_y = 0.0
+        direction_magn = 0.0
+        direction_norm_x = 0.0
+        direction_norm_y = 0.0
 
         for body in self.body_list:
             body.prev_acc = copy.deepcopy(body.acc)
@@ -127,25 +127,15 @@ class GravityEngine:
             for other_body in self.body_list:
                 #only calculate half of every combination because it is redundant
                 if i < j:
-                    distance_x = other_body.pos.x - body.pos.x
-                    distance_y = other_body.pos.y - body.pos.y
-                    distance_total = math.sqrt((distance_x * distance_x) + (distance_y  * distance_y))
+                    direction_x = other_body.pos.x - body.pos.x
+                    direction_y = other_body.pos.y - body.pos.y
+                    direction_magn = math.sqrt(direction_x * direction_x + direction_y * direction_y)
+                    #to avoid division by 0 and inaccurate accerleration
+                    if (direction_magn > 1.0):
+                        direction_norm_x = direction_x / direction_magn
+                        direction_norm_y = direction_y / direction_magn
 
-                    # to avoid division by 0 and inaccurate accerleration
-                    # ToDo: maybe make it variable to mass or radius
-                    if (distance_total > 1.0):
-                        # calculate angle to other object to separate the force correctly among both axis
-                        if (distance_x > 0.0):
-                            angle_to_object = math.atan(distance_y / distance_x)
-                        elif (distance_x < 0.0):
-                            angle_to_object = math.atan(distance_y / distance_x) + math.pi
-                        else:
-                            if (distance_y >= 0):
-                                angle_to_object = math.pi / 2
-                            else:
-                                angle_to_object = math.pi * 1.5
-
-                        # Calculate gravitational acceleration (force) to other object
+                        #Calculate gravitational acceleration (force) to other object
                         #              m1 * m2
                         #    F = G * -----------
                         #                r^2
@@ -154,13 +144,20 @@ class GravityEngine:
                         #
                         #    a = G * m2 / r^2
                         #
-                        #    G is changed to 1 (attraction force can be adapted by changing the mass) 
-                        body.acc.x += math.cos(angle_to_object) * (other_body.mass / (distance_total * distance_total)) * G_CONSTANT
-                        body.acc.y += math.sin(angle_to_object) * (other_body.mass / (distance_total * distance_total)) * G_CONSTANT
+                        #G is changed to 1 (attraction force can be adapted by changing the mass) 
+                        body.acc.x += direction_norm_x * (other_body.mass / (direction_magn * direction_magn))
+                        body.acc.y += direction_norm_y * (other_body.mass / (direction_magn * direction_magn))
 
-                        # acceleration calculation of other object also done here to save time
-                        other_body.acc.x += math.cos(angle_to_object + math.pi) * (body.mass / (distance_total * distance_total)) * G_CONSTANT
-                        other_body.acc.y += math.sin(angle_to_object + math.pi) * (body.mass / (distance_total * distance_total)) * G_CONSTANT
+                        #acceleration calculation of other object also done here to save time
+                        other_body.acc.x += -direction_norm_x * (body.mass / (direction_magn * direction_magn))
+                        other_body.acc.y += -direction_norm_y * (body.mass / (direction_magn * direction_magn))
+                    
+                    # #nicer looking but sadly slower than above solution
+                    # direction = other_body.pos - body.pos
+                    # direction_magn = direction.magnitude()
+                    # direction_norm = direction / direction_magn
+                    # body.acc += direction_norm * (other_body.mass / (direction_magn * direction_magn))
+                    # other_body.acc += (Vector2D(0, 0) - direction_norm) * (body.mass / (direction_magn * direction_magn))
                 j += 1
             i += 1
 
@@ -189,4 +186,4 @@ class GravityEngine:
         body.prev_pos = body.pos - new_vel
 
 if __name__ == "__main__":
-    print("herllo")
+    print("this is the gravity engine")
