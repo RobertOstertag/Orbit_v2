@@ -37,8 +37,8 @@ class GravityEngine:
 
         #list of all celestial bodies in the simulation
         self.body_list = [
-            CelestialBody(  Vector2D(+0,  +0),  Vector2D(+0,  +0),  1000,   color_h = 1, color_s = 0),
-            CelestialBody(  Vector2D(+85, +0),  Vector2D(+0,  +4),  1,      color_h = 0),
+            CelestialBody(  Vector2D(+0,  +0),  Vector2D(+0,  +0),  1000,   color_h = 0, color_s = 0), #white
+            CelestialBody(  Vector2D(+85, +0),  Vector2D(+0,  +4),  1,      color_h = 0, color_s = 1), #red
 
             #Cool Visuals
             # CelestialBody(  Vector2D(+0,  +0),  Vector2D(+0,  +0),  1000,   color_h = 1, color_s = 0),

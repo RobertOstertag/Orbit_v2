@@ -176,7 +176,7 @@ class SimulationWindow:
 
         #only draw when the object is visible on screen
         if ((pos_x != None) and (pos_y != None)):
-            self.body_shape_list[shape_index] = pyglet.shapes.Circle(pos_x, pos_y, radius = body.radius * self.scaling, color = (int(body.color.r), int(body.color.g), int(body.color.b)), batch = self.batch)
+            self.body_shape_list[shape_index] = pyglet.shapes.Circle(pos_x, pos_y, radius = body.radius * self.scaling, color = body.color.get_rgb_8bit(), batch = self.batch)
         else:
             #delete object so that it will be removed from the screen
             self.body_shape_list[shape_index] = None
@@ -202,7 +202,7 @@ class SimulationWindow:
 
         #only create multiline if trail_list is big enough
         if (len(trail_list) >= 1):
-            self.trail_shape_list[shape_index] = pyglet.shapes.MultiLine(*trail_list, color = (int(body.color.r), int(body.color.g), int(body.color.b)), batch = self.batch)
+            self.trail_shape_list[shape_index] = pyglet.shapes.MultiLine(*trail_list, color = body.color.get_rgb_8bit(), batch = self.batch)
         else:
             self.trail_shape_list[shape_index] = None
 
