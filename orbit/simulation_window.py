@@ -4,7 +4,7 @@ import math
 from pyglet.window import Window, key
 import pyglet
 
-from gravityEngine import CelestialBody
+from gravity_engine import CelestialBody
 
 from data_logging import DataLogger
 

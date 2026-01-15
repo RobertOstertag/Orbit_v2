@@ -1,6 +1,6 @@
 import time
-from gravityEngine import GravityEngine
-from simulationWindow import SimulationWindow
+from gravity_engine import GravityEngine
+from simulation_window import SimulationWindow
 
 def main():
     #create celestial bodies and the simulation framework
