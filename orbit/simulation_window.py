@@ -1,12 +1,16 @@
+#for relative imports
+import sys
+from pathlib import Path
+project_root = Path(__file__).parent.parent
+sys.path.append(str(project_root))
+
 import copy
 import math
-
 from pyglet.window import Window, key
 import pyglet
 
-from gravity_engine import CelestialBody
-
-from data_logging import DataLogger
+from orbit.gravity_engine import CelestialBody
+from orbit.data_logging import DataLogger
 
 #initial window size
 WINDOW_WIDTH = 800
@@ -107,16 +111,16 @@ class SimulationWindow:
             elif (symbol == key.PLUS) or (symbol == key.NUM_ADD):
                 #skip over 0.0
                 if (math.isclose(self.gravity_engine_ref.dt + DT_CHANGE, 0.0, abs_tol=1e-5)):
-                    self.gravity_engine_ref.change_dt(+DT_CHANGE * 2)
+                    self.gravity_engine_ref.change_dt(self.gravity_engine_ref.dt + (DT_CHANGE * 2))
                 else:
-                    self.gravity_engine_ref.change_dt(+DT_CHANGE)
+                    self.gravity_engine_ref.change_dt(self.gravity_engine_ref.dt + DT_CHANGE)
 
             elif (symbol == key.MINUS) or (symbol == key.NUM_SUBTRACT):
                 #skip over 0.0
                 if (math.isclose(self.gravity_engine_ref.dt - DT_CHANGE, 0.0, abs_tol=1e-5)):
-                    self.gravity_engine_ref.change_dt(-DT_CHANGE * 2)
+                    self.gravity_engine_ref.change_dt(self.gravity_engine_ref.dt - (DT_CHANGE * 2))
                 else:
-                    self.gravity_engine_ref.change_dt(-DT_CHANGE)
+                    self.gravity_engine_ref.change_dt(self.gravity_engine_ref.dt - DT_CHANGE)
 
             elif symbol == key.A:
                 self.adding = True

@@ -1,7 +1,12 @@
-from utils import Vector2D, Color
+#for relative imports
+import sys
+from pathlib import Path
+project_root = Path(__file__).parent.parent
+sys.path.append(str(project_root))
+
+from orbit.utils import Vector2D, Color
 import math
 import copy
-import random
 
 TRAIL_LENGTH = 100
 TRAIL_DELTA = 10
@@ -26,32 +31,14 @@ class CelestialBody:
     
     
 class GravityEngine:
-    def __init__(self, alghorithm):
+    def __init__(self, body_list ,alghorithm):
         #0=Euler, 1=Verlet Integration, 2=Velocity Verlet Integration
         self.alghorithm = alghorithm
         #timestep per engine call
         self.dt = 0.5
 
-        #initialize celestial Bodies
-        random.seed(3)
-
         #list of all celestial bodies in the simulation
-        self.body_list = [
-            CelestialBody(  Vector2D(+0,  +0),  Vector2D(+0,  +0),  1000,   color_h = 0, color_s = 0), #white
-            CelestialBody(  Vector2D(+85, +0),  Vector2D(+0,  +4),  1,      color_h = 0, color_s = 1), #red
-
-            #Cool Visuals
-            # CelestialBody(  Vector2D(+0,  +0),  Vector2D(+0,  +0),  1000,   color_h = 1, color_s = 0),
-            # CelestialBody(  Vector2D(+50, +0),  Vector2D(+0,  +5),  1,      color_h = 0),
-            # CelestialBody(  Vector2D(-50, +0),  Vector2D(+0,  -5),  1,      color_h = 55),
-
-
-            # CelestialBody(  Vector2D(-70, +0),    Vector2D(+0,  -4),    1,      color_h = 105),
-            # CelestialBody(  Vector2D(-40, +0),    Vector2D(+0,  -6.5),  1,      color_h = 180),
-            # CelestialBody(  Vector2D(+60, +60),   Vector2D(-2,  +2),    1,      color_h = 265),
-            # CelestialBody(  Vector2D(-80, -80),   Vector2D(+5,  -4),    1,      color_h = 285),
-            # CelestialBody(  Vector2D(-30, +0),    Vector2D(+0,  +7.0),  1,      color_h = 325),
-        ]
+        self.body_list = body_list
 
         #rescale prev_pos if verlet integration is active
         if self.alghorithm == 1:
@@ -76,7 +63,6 @@ class GravityEngine:
         for body in self.body_list:
             self.update_trail(body)
 
-
     def update_euler(self):
         for body in self.body_list:
             body.pos = body.pos + (body.vel * self.dt)
@@ -96,6 +82,8 @@ class GravityEngine:
             new_pos = (body.pos * 2) - body.prev_pos + (body.acc * self.dt * self.dt)
             body.prev_pos = copy.deepcopy(body.pos)
             body.pos = new_pos
+
+            body.vel = (body.pos - body.prev_pos) / self.dt
 
     def update_velocity_verlet(self):
         for body in self.body_list:
@@ -170,9 +158,7 @@ class GravityEngine:
             body.trail[body.trail_index].x = body.pos.x
             body.trail[body.trail_index].y = body.pos.y
 
-    def change_dt(self, change):
-        new_dt = self.dt + change
-
+    def change_dt(self, new_dt):
         #for Verlet Integration the previous position needs to be changed according to the change of dt
         for body in self.body_list:
             self.update_prev_pos(body, (new_dt / self.dt))
