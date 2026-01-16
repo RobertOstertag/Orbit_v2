@@ -1,37 +1,44 @@
 import math
 
 class Vector2D:
-    def __init__(self, pos_x:float, pos_y:float):
-        self.x = pos_x
-        self.y = pos_y
+    def __init__(self, x:float, y:float):
+        self.x = x
+        self.y = y
     
     def __add__(self, other):
         if isinstance(other, Vector2D):
             return Vector2D(self.x + other.x, self.y + other.y)
-        elif (isinstance(other, float) or isinstance(other, int)):
-            return Vector2D(self.x + other, self.y + other)
-        return NotImplemented
+        raise TypeError("Second addition operand is not of type Vector2D")
     
     def __sub__(self, other):
         if isinstance(other, Vector2D):
             return Vector2D(self.x - other.x, self.y - other.y)
-        elif (isinstance(other, float) or isinstance(other, int)):
-            return Vector2D(self.x - other, self.y - other)
-        return NotImplemented
+        raise TypeError("Second subtraction operand is not of type Vector2D")
 
-    def __mul__(self, other):
+    def __mul__(self, scalar):
+        if (isinstance(scalar, float) or isinstance(scalar, int)):
+            return Vector2D(self.x * scalar, self.y * scalar)
+        raise TypeError("Second multiplication operand is not of type int or float")
+    
+    def __rmul__(self, scalar):
+        if (isinstance(scalar, float) or isinstance(scalar, int)):
+            return Vector2D(scalar * self.x, scalar * self.y)
+        raise TypeError("First multiplication operand is not of type int or float")
+
+    def __truediv__(self, scalar):
+        if (isinstance(scalar, float) or isinstance(scalar, int)):
+            return Vector2D(self.x / scalar, self.y / scalar)
+        raise TypeError("Second division operand is not of type int or float")
+    
+    def __rtruediv__(self, scalar):
+        if (isinstance(scalar, float) or isinstance(scalar, int)):
+            return Vector2D(scalar / self.x, scalar / self.y)
+        raise TypeError("First division operand is not of type int or float")
+    
+    def dot(self, other):
         if isinstance(other, Vector2D):
             return Vector2D(self.x * other.x, self.y * other.y)
-        elif (isinstance(other, float) or isinstance(other, int)):
-            return Vector2D(self.x * other, self.y * other)
-        return NotImplemented
-    
-    def __truediv__(self, other):
-        if isinstance(other, Vector2D):
-            return Vector2D(self.x / other.x, self.y / other.y)
-        elif (isinstance(other, float) or isinstance(other, int)):
-            return Vector2D(self.x / other, self.y / other)
-        return NotImplemented
+        raise TypeError("Second dot product operand is not of type Vector2D")
     
     def magnitude(self):
         return math.sqrt(self.x * self.x + self.y * self.y)

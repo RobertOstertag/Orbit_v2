@@ -88,14 +88,14 @@ class GravityEngine:
     def update_velocity_verlet(self):
         for body in self.body_list:
             #pos(t+dt) = pos(t) + vel(t)*dt + 1/2*acc(t)*dt^2
-            body.pos = body.pos + (body.vel * self.dt) + (body.acc * self.dt * self.dt * 0.5)
+            body.pos = body.pos + (body.vel * self.dt) + (0.5 * body.acc * self.dt * self.dt)
 
         #update forces acting on every celestial body
         self.update_acc()
 
         for body in self.body_list:
             #vel(t+dt) = vel(t) + 1/2*(acc(t) + acc(t+dt))*dt
-            body.vel = body.vel + ((body.prev_acc + body.acc) * self.dt * 0.5)
+            body.vel = body.vel + (0.5 * (body.prev_acc + body.acc) * self.dt)
 
 
     def update_acc(self):
