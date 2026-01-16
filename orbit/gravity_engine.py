@@ -8,7 +8,7 @@ from orbit.utils import Vector2D, Color
 import math
 import copy
 
-TRAIL_LENGTH = 100
+TRAIL_LENGTH = 20
 TRAIL_DELTA = 10
 
 class CelestialBody:

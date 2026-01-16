@@ -16,18 +16,17 @@ def main():
 
     #create list of bodies to show in the simulation
     body_list = [
-        CelestialBody(  Vector2D(+0,  +0),  Vector2D(+0,  +0),  1000,   color_h = 0, color_s = 0), #white
-        CelestialBody(  Vector2D(+85, +0),  Vector2D(+0,  +4),  1,      color_h = 0, color_s = 1), #red
+        # CelestialBody(  Vector2D(+0,  +0),  Vector2D(+0,  +0),  1000,   color_h = 0, color_s = 0), #white
+        # CelestialBody(  Vector2D(+85, +0),  Vector2D(+0,  +4),  1,      color_h = 0, color_s = 1), #red
 
         #nice visuals
-        # CelestialBody(  Vector2D(+0,  +0),  Vector2D(+0,  +0),  1000,   color_h = 1, color_s = 0),
-        # CelestialBody(  Vector2D(+50, +0),  Vector2D(+0,  +5),  1,      color_h = 0),
-        # CelestialBody(  Vector2D(-50, +0),  Vector2D(+0,  -5),  1,      color_h = 55),
-        # CelestialBody(  Vector2D(-70, +0),    Vector2D(+0,  -4),    1,      color_h = 105),
-        # CelestialBody(  Vector2D(-40, +0),    Vector2D(+0,  -6.5),  1,      color_h = 180),
-        # CelestialBody(  Vector2D(+60, +60),   Vector2D(-2,  +2),    1,      color_h = 265),
-        # CelestialBody(  Vector2D(-80, -80),   Vector2D(+5,  -4),    1,      color_h = 285),
-        # CelestialBody(  Vector2D(-30, +0),    Vector2D(+0,  +7.0),  1,      color_h = 325),
+        CelestialBody(  Vector2D(+0,  +0),  Vector2D(+0,  +0),   1000, color_h = 1, color_s = 0),
+        CelestialBody(  Vector2D(+50, +0),  Vector2D(+0,  +5),   1,    color_h = 0),
+        CelestialBody(  Vector2D(-50, +0),  Vector2D(+0,  -5),   1,    color_h = 55),
+        CelestialBody(  Vector2D(-180, +0), Vector2D(+0,  -1.5), 1,    color_h = 105),
+        CelestialBody(  Vector2D(-40, +0),  Vector2D(+0,  -6.5), 1,    color_h = 180),
+        CelestialBody(  Vector2D(+60, +60), Vector2D(-2,  +2),   1,    color_h = 265),
+        CelestialBody(  Vector2D(-80, -80), Vector2D(+2.5,  -3), 1,    color_h = 285),
     ]
 
     #create celestial bodies and the simulation framework
