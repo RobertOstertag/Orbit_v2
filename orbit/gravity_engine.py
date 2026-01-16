@@ -9,7 +9,8 @@ import math
 import copy
 
 TRAIL_LENGTH = 20
-TRAIL_DELTA = 10
+TRAIL_DELTA = 0.1
+START_DT = 0.01
 
 class CelestialBody:
     def __init__(self, pos:Vector2D, vel:Vector2D, mass, radius = None, color_h = 360, color_s = 1.0, color_v = 1.0):
@@ -21,61 +22,78 @@ class CelestialBody:
         self.prev_acc = Vector2D(0.0, 0.0) #used for velocity verlet integration
 
         self.mass = mass
-        self.radius = radius if radius is not None else (math.log(mass) + 10) #x squared maybe?
+
+class BodyAccessories:
+    def __init__(self, initial_pos:Vector2D, radius, color_h = 360, color_s = 1.0, color_v = 1.0):
+        self.radius = radius
         self.color = Color(color_h, color_s, color_v)
 
         self.trail = [Vector2D(0, 0) for i in range(TRAIL_LENGTH)]
-        self.trail[0].x = pos.x
-        self.trail[0].y = pos.y
+        self.trail[0] = copy.deepcopy(initial_pos)
         self.trail_index = 0
-    
-    
+
 class GravityEngine:
-    def __init__(self, body_list ,alghorithm):
+    def __init__(self, alghorithm):
         #0=Euler, 1=Verlet Integration, 2=Velocity Verlet Integration
         self.alghorithm = alghorithm
         #timestep per engine call
-        self.dt = 0.5
+        self.dt = START_DT
 
         #list of all celestial bodies in the simulation
-        self.body_list = body_list
+        self.body_list = []
+        #additional information for every celestial body
+        self.accesory_list = []
+        self.hue = 0
 
+
+    def add_body(self, pos_x, pos_y, vel_x, vel_y, mass):
+        body = CelestialBody(Vector2D(pos_x, pos_y), Vector2D(vel_x, vel_y), mass=mass)
         #rescale prev_pos if verlet integration is active
         if self.alghorithm == 1:
-            for body in self.body_list:
-                self.update_prev_pos(body, self.dt / 1.0)
+            self.update_prev_pos(body, self.dt)
+        #add body to list
+        self.body_list.append(body)
+
+        accessory = BodyAccessories(Vector2D(pos_x, pos_y), radius=math.sqrt(mass)+4, color_h=self.hue)
+        self.accesory_list.append(accessory)
+        self.hue += 55
 
 
     def update(self):
         #Euler Method
         if (self.alghorithm == 0):
-            self.update_euler()
+            self.euler_method()
 
         #Verlet Integration
         elif (self.alghorithm == 1):
-            self.update_verlet()
+            self.verlet_integration()
 
         #Velocity Verlet Integration
         elif (self.alghorithm == 2):
-            self.update_velocity_verlet()
+            self.velocity_verlet_integration()
+
+        #Runge-Kutta 4 Method
+        elif (self.alghorithm == 3):
+            self.runge_kutta_4_method()
 
         #update trail of every body (alghorithm independent)
-        for body in self.body_list:
-            self.update_trail(body)
+        for i, body in enumerate(self.body_list):
+            self.update_trail(body, self.accesory_list[i])
 
-    def update_euler(self):
-        for body in self.body_list:
-            body.pos = body.pos + (body.vel * self.dt)
 
-        self.update_acc()
-        #update positions of every body
+    def euler_method(self):
+        self.calculate_acc(self.body_list)
 
         for body in self.body_list:
             body.vel = body.vel + (body.acc * self.dt)
 
-    def update_verlet(self):
-        #update forces acting on every celestial body
-        self.update_acc()
+        for body in self.body_list:
+            body.pos = body.pos + (body.vel * self.dt)
+
+
+    def verlet_integration(self):
+        #calculate acceleration for every celestial body
+        self.calculate_acc(self.body_list)
         #update positions of every object
         for body in self.body_list:
             #pos(t+dt) = 2*pos(t) - pos(t-dt) + a*dt^2
@@ -83,43 +101,78 @@ class GravityEngine:
             body.prev_pos = copy.deepcopy(body.pos)
             body.pos = new_pos
 
+            #not needed for verlet integration but used for energy calculation and other evaluations
             body.vel = (body.pos - body.prev_pos) / self.dt
 
-    def update_velocity_verlet(self):
+
+    def velocity_verlet_integration(self):
         for body in self.body_list:
             #pos(t+dt) = pos(t) + vel(t)*dt + 1/2*acc(t)*dt^2
             body.pos = body.pos + (body.vel * self.dt) + (0.5 * body.acc * self.dt * self.dt)
 
         #update forces acting on every celestial body
-        self.update_acc()
+        self.calculate_acc(self.body_list)
 
         for body in self.body_list:
             #vel(t+dt) = vel(t) + 1/2*(acc(t) + acc(t+dt))*dt
             body.vel = body.vel + (0.5 * (body.prev_acc + body.acc) * self.dt)
 
 
-    def update_acc(self):
+    def runge_kutta_4_method(self):
+        body_list_1 = copy.deepcopy(self.body_list)
+        body_list_2 = copy.deepcopy(self.body_list)
+        body_list_3 = copy.deepcopy(self.body_list)
+        body_list_4 = copy.deepcopy(self.body_list)
+
+        #RK step 1
+        self.calculate_acc(body_list_1)
+        
+        #RK step 2
+        for i, body in enumerate(body_list_2):
+            body.pos += 0.5 * self.dt * body_list_1[i].vel
+            body.vel += 0.5 * self.dt * body_list_1[i].acc
+        self.calculate_acc(body_list_2)
+
+        #RK step 3
+        for i, body in enumerate(body_list_3):
+            body.pos += 0.5 * self.dt * body_list_2[i].vel
+            body.vel += 0.5 * self.dt * body_list_2[i].acc
+        self.calculate_acc(body_list_3)
+
+        #RK step 4
+        for i, body in enumerate(body_list_4):
+            body.pos += self.dt * body_list_3[i].vel
+            body.vel += self.dt * body_list_3[i].acc
+        self.calculate_acc(body_list_4)
+
+        #RK final averaging
+        for i, body in enumerate(self.body_list):
+            body.pos += ((self.dt / 6) * (body_list_1[i].vel + (2 * body_list_2[i].vel) + (2 * body_list_3[i].vel) + body_list_4[i].vel))
+            body.vel += ((self.dt / 6) * (body_list_1[i].acc + (2 * body_list_2[i].acc) + (2 * body_list_3[i].acc) + body_list_4[i].acc))
+
+
+    def calculate_acc(self, body_list):
         direction_x = 0.0
         direction_y = 0.0
         direction_magn = 0.0
         direction_norm_x = 0.0
         direction_norm_y = 0.0
 
-        for body in self.body_list:
+        for body in body_list:
             body.prev_acc = copy.deepcopy(body.acc)
             body.acc = Vector2D(0.0, 0.0)
 
         i = 0
-        for body in self.body_list:
+        for body in body_list:
             j = 0
-            for other_body in self.body_list:
+            for other_body in body_list:
                 #only calculate half of every combination because it is redundant
                 if i < j:
                     direction_x = other_body.pos.x - body.pos.x
                     direction_y = other_body.pos.y - body.pos.y
                     direction_magn = math.sqrt(direction_x * direction_x + direction_y * direction_y)
                     #to avoid division by 0 and inaccurate accerleration
-                    if (direction_magn > 1.0):
+                    if (direction_magn > 0.00001):
                         direction_norm_x = direction_x / direction_magn
                         direction_norm_y = direction_y / direction_magn
 
@@ -150,13 +203,13 @@ class GravityEngine:
             i += 1
 
 
-    def update_trail(self, body:CelestialBody):
+    def update_trail(self, body:CelestialBody, accessory:BodyAccessories):
         #ToDo: real distance calculation would be more accurate but this will do for now
-        if ((math.fabs(body.pos.x - body.trail[body.trail_index].x) >= TRAIL_DELTA) or
-            (math.fabs(body.pos.y - body.trail[body.trail_index].y) >= TRAIL_DELTA)):
-            body.trail_index = (body.trail_index + 1) % (TRAIL_LENGTH)
-            body.trail[body.trail_index].x = body.pos.x
-            body.trail[body.trail_index].y = body.pos.y
+        if ((math.fabs(body.pos.x - accessory.trail[accessory.trail_index].x) >= TRAIL_DELTA) or
+            (math.fabs(body.pos.y - accessory.trail[accessory.trail_index].y) >= TRAIL_DELTA)):
+            accessory.trail_index = (accessory.trail_index + 1) % (TRAIL_LENGTH)
+            accessory.trail[accessory.trail_index].x = body.pos.x
+            accessory.trail[accessory.trail_index].y = body.pos.y
 
     def change_dt(self, new_dt):
         #for Verlet Integration the previous position needs to be changed according to the change of dt
@@ -171,5 +224,6 @@ class GravityEngine:
         new_vel = temp_vel * scale
         body.prev_pos = body.pos - new_vel
 
+
 if __name__ == "__main__":
-    print("this is the gravity engine")
+    print("This is the gravity engine")
