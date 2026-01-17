@@ -17,8 +17,12 @@ WINDOW_WIDTH = 800
 WINDOW_HEIGHT = 800
 #how often the simulation will be called (60 times per second)
 UPDATE_TIME = 1/60.0
-
+#value how much dt is changed when +/- is pressed
 DT_CHANGE = 0.01
+#initial simulation size factor
+SIZE_FACTOR = 1.4
+#trail delta in pixels
+TRAIL_DELTA = 10
 
 class SimulationWindow:
     def __init__(self, gravity_engine:GravityEngine):
@@ -27,7 +31,7 @@ class SimulationWindow:
         self.batch = pyglet.graphics.Batch()
         self.keys = key.KeyStateHandler()
         self.window.push_handlers(self.keys)
-        self.gravity_engine_ref = gravity_engine
+        self.engine = gravity_engine
 
         number_of_bodies = len(gravity_engine.body_list)
         self.body_shape_list = [None] * number_of_bodies
@@ -36,10 +40,11 @@ class SimulationWindow:
         self.width = WINDOW_WIDTH
         self.height = WINDOW_HEIGHT
 
-        self.min_x = -2.0 #0 - (width >> 1)
-        self.max_x = +2.0 #0 + (width >> 1)
-        self.min_y = -2.0 #0 - (height >> 1)
-        self.max_y = +2.0 #0 + (height >> 1)
+        #resize simulation size to show initial positions of celestial bodies
+        self.simulation_window_resize()
+        #scale trail delta intially
+        self.trail_delta_scale()
+
         self.scaling = 1.0
 
         self.data_logger = DataLogger()
@@ -110,17 +115,17 @@ class SimulationWindow:
 
             elif (symbol == key.PLUS) or (symbol == key.NUM_ADD):
                 #skip over 0.0
-                if (math.isclose(self.gravity_engine_ref.dt + DT_CHANGE, 0.0, abs_tol=1e-5)):
-                    self.gravity_engine_ref.change_dt(self.gravity_engine_ref.dt + (DT_CHANGE * 2))
+                if (math.isclose(self.engine.dt + DT_CHANGE, 0.0, abs_tol=1e-5)):
+                    self.engine.change_dt(self.engine.dt + (DT_CHANGE * 2))
                 else:
-                    self.gravity_engine_ref.change_dt(self.gravity_engine_ref.dt + DT_CHANGE)
+                    self.engine.change_dt(self.engine.dt + DT_CHANGE)
 
             elif (symbol == key.MINUS) or (symbol == key.NUM_SUBTRACT):
                 #skip over 0.0
-                if (math.isclose(self.gravity_engine_ref.dt - DT_CHANGE, 0.0, abs_tol=1e-5)):
-                    self.gravity_engine_ref.change_dt(self.gravity_engine_ref.dt - (DT_CHANGE * 2))
+                if (math.isclose(self.engine.dt - DT_CHANGE, 0.0, abs_tol=1e-5)):
+                    self.engine.change_dt(self.engine.dt - (DT_CHANGE * 2))
                 else:
-                    self.gravity_engine_ref.change_dt(self.gravity_engine_ref.dt - DT_CHANGE)
+                    self.engine.change_dt(self.engine.dt - DT_CHANGE)
 
             elif symbol == key.A:
                 self.adding = True
@@ -166,13 +171,13 @@ class SimulationWindow:
     def update(self, dt, start_time):
         #update screen visualisation
         shape_index = 0
-        for i, body in enumerate(self.gravity_engine_ref.body_list):
-            self.draw_body(body, self.gravity_engine_ref.accesory_list[i], shape_index)
-            self.draw_trail(self.gravity_engine_ref.accesory_list[i], shape_index)
+        for i, body in enumerate(self.engine.body_list):
+            self.draw_body(body, self.engine.accesory_list[i], shape_index)
+            self.draw_trail(self.engine.accesory_list[i], shape_index)
             shape_index += 1
         
         #write logging information on the screen
-        self.draw_log(dt, start_time, self.gravity_engine_ref.dt)
+        self.draw_log(dt, start_time, self.engine.dt)
 
     def draw_body(self, body:CelestialBody, accessory:BodyAccessories, shape_index):
         pos_x = self.scale_x(body.pos.x)
@@ -180,7 +185,7 @@ class SimulationWindow:
 
         #only draw when the object is visible on screen
         if ((pos_x != None) and (pos_y != None)):
-            self.body_shape_list[shape_index] = pyglet.shapes.Circle(pos_x, pos_y, radius = 5, color = accessory.color.get_rgb_8bit(), batch = self.batch)
+            self.body_shape_list[shape_index] = pyglet.shapes.Circle(pos_x, pos_y, radius=accessory.radius*self.scaling, color=accessory.color.get_rgb_8bit(), batch=self.batch)
         else:
             #delete object so that it will be removed from the screen
             self.body_shape_list[shape_index] = None
@@ -206,7 +211,7 @@ class SimulationWindow:
 
         #only create multiline if trail_list is big enough
         if (len(trail_list) >= 1):
-            self.trail_shape_list[shape_index] = pyglet.shapes.MultiLine(*trail_list, color = accessory.color.get_rgb_8bit(), batch = self.batch)
+            self.trail_shape_list[shape_index] = pyglet.shapes.MultiLine(*trail_list, color=accessory.color.get_rgb_8bit(), batch=self.batch)
         else:
             self.trail_shape_list[shape_index] = None
 
@@ -217,6 +222,43 @@ class SimulationWindow:
                         log, font_name='Consolas', font_size=12,
                         x=10, y=self.height-10, anchor_x='left', anchor_y='top',
                         batch=self.batch, multiline=True, width=300)
+
+
+    def simulation_window_resize(self):
+        min_x, max_x, min_y, max_y = 0.0, 0.0, 0.0, 0.0
+        for body in self.engine.body_list:
+            if body.pos.x < min_x:
+                min_x = copy.deepcopy(body.pos.x)
+            if body.pos.x > max_x:
+                max_x = copy.deepcopy(body.pos.x)
+            if body.pos.y < min_y:
+                min_y = copy.deepcopy(body.pos.y)
+            if body.pos.y > max_y:
+                max_y = copy.deepcopy(body.pos.y)
+        
+        if (max_x > -min_x):
+            min_x = -max_x
+        else:
+            max_x = -min_x
+        if (max_y > -min_y):
+            min_y = -max_y
+        else:
+            max_y = -min_y
+
+        if (max_x - min_x) > (max_y - min_y):
+            self.min_x = min_x * SIZE_FACTOR
+            self.max_x = max_x * SIZE_FACTOR
+            self.min_y = min_x * SIZE_FACTOR
+            self.max_y = max_x * SIZE_FACTOR
+        else:
+            self.min_x = min_y * SIZE_FACTOR
+            self.max_x = max_y * SIZE_FACTOR
+            self.min_y = min_y * SIZE_FACTOR
+            self.max_y = max_y * SIZE_FACTOR
+
+    def trail_delta_scale(self):
+        simulation_per_pixel = (self.max_x - self.min_x) / self.width
+        self.engine.trail_delta = simulation_per_pixel * TRAIL_DELTA
 
             # @self.window.event
             # def on_mouse_drag(x, y, dx, dy, button, modifiers):
