@@ -32,10 +32,8 @@ class SimulationWindow:
         self.keys = key.KeyStateHandler()
         self.window.push_handlers(self.keys)
         self.engine = gravity_engine
-
-        number_of_bodies = len(gravity_engine.body_list)
-        self.body_shape_list = [None] * number_of_bodies
-        self.trail_shape_list = [None] * number_of_bodies
+        #for registering events
+        self.window.push_handlers(self)
 
         self.width = WINDOW_WIDTH
         self.height = WINDOW_HEIGHT
@@ -46,130 +44,34 @@ class SimulationWindow:
         self.trail_delta_scale()
 
         self.scaling = 1.0
-
         self.data_logger = DataLogger()
-
         self.running = True
-        self.adding = False
-        self.removing = False
-        self.velocity_change = False
-        self.velocity_change_index = None
-        self.velocity_change_start = None
-        self.velocity_line_shape = None
 
-        @self.window.event
-        def on_draw():
-            self.window.clear()
-            self.batch.draw()
+        self.body_shape_list = []
+        self.trail_shape_list = [None] * len(gravity_engine.body_list)
 
-        @self.window.event
-        def on_mouse_scroll(x, y, scroll_x, scroll_y):
-            #depending on scroll wheel direction set scaling value
-            if (scroll_y > 0):
-                scale_value = 2/3
-            else:
-                scale_value = 3/2
-
-            #not needed here but used for radius scaling
-            self.scaling = self.scaling / scale_value
-            
-            #transform mouse position from window to simulation frame
-            mouse_pos_x = ((x / self.width) * (self.max_x - self.min_x)) + self.min_x
-            mouse_pos_y = ((y / self.height) * (self.max_y - self.min_y)) + self.min_y
-
-            #update simulation size according to mouse position
-            self.max_x = mouse_pos_x + ((self.max_x - mouse_pos_x) * scale_value)
-            self.min_x = mouse_pos_x - ((mouse_pos_x - self.min_x) * scale_value)
-            self.max_y = mouse_pos_y + ((self.max_y - mouse_pos_y) * scale_value)
-            self.min_y = mouse_pos_y - ((mouse_pos_y - self.min_y) * scale_value)
-
-        @self.window.event
-        def on_resize(new_width, new_height):
-            #calculate change of window screen and accordingly change simulation sizes
-            change_x = ((new_width - self.width) / self.width)
-            self.max_x += self.max_x * change_x
-            self.min_x += self.min_x * change_x
-            change_y = ((new_height - self.height) / self.height)
-            self.max_y += self.max_y * change_y
-            self.min_y += self.min_y * change_y
-
-            #udpate internal window size
-            self.width = new_width
-            self.height = new_height
-
-        @self.window.event
-        def on_mouse_drag(x, y, dx, dy, button, modifiers):
-            #STRG is pressed while mouse dragged -> shift simulation min and max according to scaled dx or dy
-            #if (modifiers & key.MOD_CTRL):
-            dx_scaled = (dx / self.width) * (self.max_x - self.min_x)
-            self.max_x -= dx_scaled
-            self.min_x -= dx_scaled
-            dy_scaled = (dy / self.height) * (self.max_y - self.min_y)
-            self.max_y -= dy_scaled
-            self.min_y -= dy_scaled
-
-        @self.window.event
-        def on_key_press(symbol, modifiers):
-            if symbol == key.SPACE:
-                self.running = not self.running
-
-            elif (symbol == key.PLUS) or (symbol == key.NUM_ADD):
-                #skip over 0.0
-                if (math.isclose(self.engine.dt + DT_CHANGE, 0.0, abs_tol=1e-5)):
-                    self.engine.change_dt(self.engine.dt + (DT_CHANGE * 2))
-                else:
-                    self.engine.change_dt(self.engine.dt + DT_CHANGE)
-
-            elif (symbol == key.MINUS) or (symbol == key.NUM_SUBTRACT):
-                #skip over 0.0
-                if (math.isclose(self.engine.dt - DT_CHANGE, 0.0, abs_tol=1e-5)):
-                    self.engine.change_dt(self.engine.dt - (DT_CHANGE * 2))
-                else:
-                    self.engine.change_dt(self.engine.dt - DT_CHANGE)
-
-            elif symbol == key.A:
-                self.adding = True
-
-            elif symbol == key.R:
-                self.removing = True
-
-            elif symbol == key.V:
-                self.velocity_change = True
-        
-        @self.window.event
-        def on_key_release(symbol, modifiers):
-            if symbol == key.A:
-                self.adding = False
-            elif symbol == key.R:
-                self.removing = False
-            elif symbol == key.V:
-                self.velocity_change = False
-
-        @self.window.event
-        def on_close():
-            pass
-
-    def scale_x(self, orig_x):
-        return ((orig_x - self.min_x) / (self.max_x - self.min_x)) * self.width
+        #create initial bodies
+        for index, body in enumerate(self.engine.body_list):
+            pos_x = self.scale_x(body.pos.x)
+            pos_y = self.scale_x(body.pos.y)
+            radius = self.engine.accesory_list[index].radius * self.scaling
+            color = self.engine.accesory_list[index].color.get_rgb_8bit()
+            self.body_shape_list.append(pyglet.shapes.Circle(pos_x, pos_y, radius=radius, color=color, batch=self.batch))
     
-    def scale_y(self, orig_y):
-        return ((orig_y - self.min_y) / (self.max_y - self.min_y)) * self.height
-        
-    def simulation_start(self, loop_function, gravity_engine, simulation_window):
-        #schedule a function call to be called every x seconds
-        pyglet.clock.schedule_interval(loop_function, UPDATE_TIME, gravity_engine, simulation_window)
-        #run the pyglet app
-        pyglet.app.run()
-    
-
     def update(self, dt, start_time):
         #update screen visualisation
         for index, body in enumerate(self.engine.body_list):
             self.draw_body(body, self.engine.accesory_list[index], index)
             self.draw_trail(self.engine.accesory_list[index], index)
-        
+
         #write logging information on the screen
         self.draw_log(dt, start_time, self.engine.dt)
+
+    def simulation_start(self, loop_function, gravity_engine, simulation_window):
+        #schedule a function call to be called every x seconds
+        pyglet.clock.schedule_interval(loop_function, UPDATE_TIME, gravity_engine, simulation_window)
+        #run the pyglet app
+        pyglet.app.run()
 
     def draw_body(self, body:CelestialBody, accessory:BodyAccessories, shape_index):
         pos_x = self.scale_x(body.pos.x)
@@ -178,10 +80,11 @@ class SimulationWindow:
         #only draw when the object is visible on screen
         radius = accessory.radius*self.scaling
         if self.check_boundary(pos_x, pos_y, radius):
-            self.body_shape_list[shape_index] = pyglet.shapes.Circle(pos_x, pos_y, radius=radius, color=accessory.color.get_rgb_8bit(), batch=self.batch)
+            self.body_shape_list[shape_index].visible = True
+            self.body_shape_list[shape_index].position = (pos_x, pos_y)
+            self.body_shape_list[shape_index].radius = accessory.radius * self.scaling
         else:
-            #delete object so that it will be removed from the screen
-            self.body_shape_list[shape_index] = None
+            self.body_shape_list[shape_index].visible = False
 
 
     def draw_trail(self, accessory:BodyAccessories, shape_index):
@@ -261,71 +164,12 @@ class SimulationWindow:
         simulation_per_pixel = (self.max_x - self.min_x) / self.width
         self.engine.trail_delta = simulation_per_pixel * TRAIL_DELTA
 
-            # @self.window.event
-            # def on_mouse_drag(x, y, dx, dy, button, modifiers):
-            #     #STRG is pressed while mouse dragged -> shift simulation min and max according to scaled dx or dy
-            #     if (modifiers & key.MOD_CTRL):
-            #         dx_scaled = (dx / self.width) * (self.max_x - self.min_x)
-            #         self.max_x -= dx_scaled
-            #         self.min_x -= dx_scaled
-            #         dy_scaled = (dy / self.height) * (self.max_y - self.min_y)
-            #         self.max_y -= dy_scaled
-            #         self.min_y -= dy_scaled
-                
-            #     #only change bodies when paused
-            #     if (self.running == False):
-            #         #draw line to show velocity
-            #         if (self.velocity_change_index != None):
-            #             body = self.celestialBodies[self.velocity_change_index]
-            #             start_x = self.velocity_change_start.x
-            #             start_y = self.velocity_change_start.y
-            #             self.velocity_line_shape = pyglet.shapes.Line( start_x, start_y,
-            #                                                     x, y,
-            #                                                     color = (int(body.color.r), int(body.color.g), int(body.color.b)),
-            #                                                     batch = self.batch)
-            #         else:
-            #             self.velocity_line_shape = None
-                        
-                
-            # @self.window.event
-            # def on_mouse_press(x, y, button, modifiers):
-            #     #only change bodies when paused
-            #     if (self.running == False):
-            #         #add body
-            #         if (self.adding == True):
-            #             pos_x = ((x / self.width) * (self.max_x - self.min_x)) + self.min_x
-            #             pos_y = ((y / self.height) * (self.max_y - self.min_y)) + self.min_y
-            #             vel_x = (random.random() * 10) - 5
-            #             vel_y = (random.random() * 10) - 5
-            #             self.celestialBodies.append(CelestialBody(Vector2D(pos_x, pos_y), Vector2D(vel_x,  vel_y), 1, color_h = random.random()))
-            #         #remove body
-            #         elif (self.removing == True):
-            #             index = self.find_celestial_body(x, y)
-            #             if ((index != None) and (index < len(self.celestialBodies))):
-            #                 self.celestialBodies.pop(index)
-            #         #change velocity of body
-            #         if (self.velocity_change == True):
-            #             index = self.find_celestial_body(x, y)
-            #             print("Found: ", index)
-            #             if (index != None):
-            #                 self.velocity_change_index = index
-            #                 body = self.celestialBodies[index]
-            #                 self.velocity_change_start = Vector2D(self.scale_x(body.pos.x), self.scale_y(body.pos.y))
-                        
+    def scale_x(self, orig_x):
+        return ((orig_x - self.min_x) / (self.max_x - self.min_x)) * self.width
+    
+    def scale_y(self, orig_y):
+        return ((orig_y - self.min_y) / (self.max_y - self.min_y)) * self.height
 
-            # @self.window.event
-            # def on_mouse_release(x, y, button, modifiers):
-            #     #change velocity of body
-            #     if (self.velocity_change_index != None):
-            #         self.celestialBodies[self.velocity_change_index].prev_pos.x = self.celestialBodies[self.velocity_change_index].pos.x - ((x - self.velocity_change_start.x) / 20)
-            #         self.celestialBodies[self.velocity_change_index].prev_pos.y = self.celestialBodies[self.velocity_change_index].pos.y - ((y - self.velocity_change_start.y) / 20)
-            #         self.velocity_change_index = None
-            #         self.velocity_change_start = None
-            #         self.velocity_line_shape = None
-
-
-
-            
         # def find_celestial_body(self, x, y):
         #     for i in range(len(self.celestialBodies)):
         #         scaled_radius = self.celestialBodies[i].radius * self.scaling
@@ -339,3 +183,71 @@ class SimulationWindow:
         #             (self.celestialBodies[i].pos.y < mouse_max_y)):
         #             return i
         #     return None
+
+    def on_draw(self):
+        self.window.clear()
+        self.batch.draw()
+
+    def on_mouse_scroll(self, x, y, scroll_x, scroll_y):
+        #depending on scroll wheel direction set scaling value
+        if (scroll_y > 0):
+            scale_value = 2/3
+        else:
+            scale_value = 3/2
+
+        #not needed here but used for radius scaling
+        self.scaling = self.scaling / scale_value
+        
+        #transform mouse position from window to simulation frame
+        mouse_pos_x = ((x / self.width) * (self.max_x - self.min_x)) + self.min_x
+        mouse_pos_y = ((y / self.height) * (self.max_y - self.min_y)) + self.min_y
+
+        #update simulation size according to mouse position
+        self.max_x = mouse_pos_x + ((self.max_x - mouse_pos_x) * scale_value)
+        self.min_x = mouse_pos_x - ((mouse_pos_x - self.min_x) * scale_value)
+        self.max_y = mouse_pos_y + ((self.max_y - mouse_pos_y) * scale_value)
+        self.min_y = mouse_pos_y - ((mouse_pos_y - self.min_y) * scale_value)
+
+    def on_resize(self, new_width, new_height):
+        #calculate change of window screen and accordingly change simulation sizes
+        change_x = ((new_width - self.width) / self.width)
+        self.max_x += self.max_x * change_x
+        self.min_x += self.min_x * change_x
+        change_y = ((new_height - self.height) / self.height)
+        self.max_y += self.max_y * change_y
+        self.min_y += self.min_y * change_y
+
+        #udpate internal window size
+        self.width = new_width
+        self.height = new_height
+
+    def on_mouse_drag(self, x, y, dx, dy, button, modifiers):
+        #shift simulation min and max according to scaled dx or dy
+        dx_scaled = (dx / self.width) * (self.max_x - self.min_x)
+        self.max_x -= dx_scaled
+        self.min_x -= dx_scaled
+        dy_scaled = (dy / self.height) * (self.max_y - self.min_y)
+        self.max_y -= dy_scaled
+        self.min_y -= dy_scaled
+
+    def on_key_press(self, symbol, modifiers):
+        if symbol == key.SPACE:
+            self.running = not self.running
+
+        elif (symbol == key.PLUS) or (symbol == key.NUM_ADD):
+            #skip over 0.0
+            if (math.isclose(self.engine.dt + DT_CHANGE, 0.0, abs_tol=1e-5)):
+                self.engine.change_dt(self.engine.dt + (DT_CHANGE * 2))
+            else:
+                self.engine.change_dt(self.engine.dt + DT_CHANGE)
+
+        elif (symbol == key.MINUS) or (symbol == key.NUM_SUBTRACT):
+            #skip over 0.0
+            if (math.isclose(self.engine.dt - DT_CHANGE, 0.0, abs_tol=1e-5)):
+                self.engine.change_dt(self.engine.dt - (DT_CHANGE * 2))
+            else:
+                self.engine.change_dt(self.engine.dt - DT_CHANGE)
+    
+
+    def on_close(self):
+        pass

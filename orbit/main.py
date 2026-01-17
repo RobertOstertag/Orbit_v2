@@ -61,6 +61,10 @@ def main():
     # gravity_engine.add_body(-0.681737994414464,0.29366023319721,   -0.579074922540872,-0.748157481446087,   1)
     # gravity_engine.add_body(-0.02259632746864,-0.612645601255358,  0.761784787007641,0.385144193447218, 1)
 
+    #not working, need adaptive step size for integration
+    # gravity_engine.add_body(0.335476420318203,-0.243208301824394,   1.047838171160758,0.817404215288346,   1)
+    # gravity_engine.add_body(0.010021708193205,0.363104062311693,   -0.84720090780794,-0.235749148338353,   1)
+    # gravity_engine.add_body(0.030978712523174,0.423035485079015,  -0.200636552532016,-0.581655492859626, 1)
 
     #creat simulation handler for window drawing, scaling, button presses, etc.
     simulation_window = SimulationWindow(gravity_engine)
