@@ -42,9 +42,9 @@ def main():
     # gravity_engine.add_body(-1.2203557197,0,    0,-2.1079512924, 1)
 
     # #Broucke 2
-    # gravity_engine.add_body(0.336130095,0,   0,1.532431537,   1)
-    # gravity_engine.add_body(0.7699893804,0,  0,-0.6287350978,   1)
-    # gravity_engine.add_body(-1.1061194753,0, 0,-0.9036964391, 1)
+    gravity_engine.add_body(0.336130095,0,   0,1.532431537,   1)
+    gravity_engine.add_body(0.7699893804,0,  0,-0.6287350978,   1)
+    gravity_engine.add_body(-1.1061194753,0, 0,-0.9036964391, 1)
 
     #Broucke 3
     # gravity_engine.add_body(0.0132604844,0,   0,1.05415192,   1)
@@ -52,9 +52,9 @@ def main():
     # gravity_engine.add_body(-1.4289890859,0,  0,-0.8440052572, 1)
 
     #Broucke 4
-    gravity_engine.add_body(-0.5426216182,0,   0,0.8750200467,   1)
-    gravity_engine.add_body(2.5274928067,0,   0,-0.0526955841,   1)
-    gravity_engine.add_body(-1.9848711885,0,  0,-0.8223244626, 1)
+    # gravity_engine.add_body(-0.5426216182,0,   0,0.8750200467,   1)
+    # gravity_engine.add_body(2.5274928067,0,   0,-0.0526955841,   1)
+    # gravity_engine.add_body(-1.9848711885,0,  0,-0.8223244626, 1)
 
     #Sheen 1
     # gravity_engine.add_body(0.486657678894505,0.75504188858351,   -0.182709864466916,0.363013287999004,   1)

@@ -150,16 +150,10 @@ class SimulationWindow:
             pass
 
     def scale_x(self, orig_x):
-        if ((orig_x <= self.max_x) and (orig_x >= self.min_x)):
-            return ((orig_x - self.min_x) / (self.max_x - self.min_x)) * self.width
-        else:
-            return None
+        return ((orig_x - self.min_x) / (self.max_x - self.min_x)) * self.width
     
     def scale_y(self, orig_y):
-        if ((orig_y <= self.max_y) and (orig_y >= self.min_y)):
-            return ((orig_y - self.min_y) / (self.max_y - self.min_y)) * self.height
-        else:
-            return None
+        return ((orig_y - self.min_y) / (self.max_y - self.min_y)) * self.height
         
     def simulation_start(self, loop_function, gravity_engine, simulation_window):
         #schedule a function call to be called every x seconds
@@ -170,11 +164,9 @@ class SimulationWindow:
 
     def update(self, dt, start_time):
         #update screen visualisation
-        shape_index = 0
-        for i, body in enumerate(self.engine.body_list):
-            self.draw_body(body, self.engine.accesory_list[i], shape_index)
-            self.draw_trail(self.engine.accesory_list[i], shape_index)
-            shape_index += 1
+        for index, body in enumerate(self.engine.body_list):
+            self.draw_body(body, self.engine.accesory_list[index], index)
+            self.draw_trail(self.engine.accesory_list[index], index)
         
         #write logging information on the screen
         self.draw_log(dt, start_time, self.engine.dt)
@@ -184,8 +176,9 @@ class SimulationWindow:
         pos_y = self.scale_y(body.pos.y)
 
         #only draw when the object is visible on screen
-        if ((pos_x != None) and (pos_y != None)):
-            self.body_shape_list[shape_index] = pyglet.shapes.Circle(pos_x, pos_y, radius=accessory.radius*self.scaling, color=accessory.color.get_rgb_8bit(), batch=self.batch)
+        radius = accessory.radius*self.scaling
+        if self.check_boundary(pos_x, pos_y, radius):
+            self.body_shape_list[shape_index] = pyglet.shapes.Circle(pos_x, pos_y, radius=radius, color=accessory.color.get_rgb_8bit(), batch=self.batch)
         else:
             #delete object so that it will be removed from the screen
             self.body_shape_list[shape_index] = None
@@ -195,6 +188,7 @@ class SimulationWindow:
         trail_index = copy.deepcopy(accessory.trail_index)
         trail_list = []
 
+        valid = False
         for i in (range(len(accessory.trail) - 1)):
             point_x = float(accessory.trail[int(trail_index)].x)
             point_y = float(accessory.trail[int(trail_index)].y)
@@ -202,19 +196,26 @@ class SimulationWindow:
             #go to next element in trail Array
             trail_index = (trail_index - 1) % len(accessory.trail)
 
-            #check if trail element was written once
+            #check if trail element was written once (initial all zeroes)
             if ((point_x != 0) or (point_y != 0)):
                 scaled_x = self.scale_x(point_x)
                 scaled_y = self.scale_y(point_y)
-                if ((scaled_x != None) and (scaled_y != None)):
-                    trail_list.append([scaled_x, scaled_y])
+                trail_list.append([scaled_x, scaled_y])
 
-        #only create multiline if trail_list is big enough
-        if (len(trail_list) >= 1):
+                if (self.check_boundary(scaled_x, scaled_y, 0) == True):
+                    valid = True
+
+        #create multiline if one point of trail_list is on the screen
+        if valid == True:
             self.trail_shape_list[shape_index] = pyglet.shapes.MultiLine(*trail_list, color=accessory.color.get_rgb_8bit(), batch=self.batch)
         else:
             self.trail_shape_list[shape_index] = None
 
+    def check_boundary(self, x, y, r):
+        if (((x + r >= 0) and (x - r <= self.width)) and
+            ((y + r >= 0) and (y - r <= self.height))):
+            return True
+        return False
 
     def draw_log(self, dt, start_time, speed):
         log = self.data_logger.log(dt, start_time, UPDATE_TIME, speed)
