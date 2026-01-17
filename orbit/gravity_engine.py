@@ -8,8 +8,8 @@ from orbit.utils import Vector2D, Color
 import math
 import copy
 
-TRAIL_LENGTH = 20
-TRAIL_DELTA = 0.1
+GRAVITIONAL_CONSTANT = 1 #6.6743e-11
+TRAIL_LENGTH = 350
 START_DT = 0.01
 
 class CelestialBody:
@@ -38,13 +38,14 @@ class GravityEngine:
         self.alghorithm = alghorithm
         #timestep per engine call
         self.dt = START_DT
-
         #list of all celestial bodies in the simulation
         self.body_list = []
         #additional information for every celestial body
         self.accesory_list = []
+        #for color picking when new bodies are added
         self.hue = 0
-
+        #to determine if new trail point is added
+        self.trail_delta = 0
 
     def add_body(self, pos_x, pos_y, vel_x, vel_y, mass):
         body = CelestialBody(Vector2D(pos_x, pos_y), Vector2D(vel_x, vel_y), mass=mass)
@@ -186,12 +187,12 @@ class GravityEngine:
                         #    a = G * m2 / r^2
                         #
                         #G is changed to 1 (attraction force can be adapted by changing the mass) 
-                        body.acc.x += direction_norm_x * (other_body.mass / (direction_magn * direction_magn))
-                        body.acc.y += direction_norm_y * (other_body.mass / (direction_magn * direction_magn))
+                        body.acc.x += direction_norm_x * GRAVITIONAL_CONSTANT * (other_body.mass / (direction_magn * direction_magn))
+                        body.acc.y += direction_norm_y * GRAVITIONAL_CONSTANT * (other_body.mass / (direction_magn * direction_magn))
 
                         #acceleration calculation of other object also done here to save time
-                        other_body.acc.x += -direction_norm_x * (body.mass / (direction_magn * direction_magn))
-                        other_body.acc.y += -direction_norm_y * (body.mass / (direction_magn * direction_magn))
+                        other_body.acc.x += -direction_norm_x * GRAVITIONAL_CONSTANT * (body.mass / (direction_magn * direction_magn))
+                        other_body.acc.y += -direction_norm_y * GRAVITIONAL_CONSTANT * (body.mass / (direction_magn * direction_magn))
                     
                     # #nicer looking but sadly slower than above solution
                     # direction = other_body.pos - body.pos
@@ -205,8 +206,8 @@ class GravityEngine:
 
     def update_trail(self, body:CelestialBody, accessory:BodyAccessories):
         #ToDo: real distance calculation would be more accurate but this will do for now
-        if ((math.fabs(body.pos.x - accessory.trail[accessory.trail_index].x) >= TRAIL_DELTA) or
-            (math.fabs(body.pos.y - accessory.trail[accessory.trail_index].y) >= TRAIL_DELTA)):
+        if ((math.fabs(body.pos.x - accessory.trail[accessory.trail_index].x) >= self.trail_delta) or
+            (math.fabs(body.pos.y - accessory.trail[accessory.trail_index].y) >= self.trail_delta)):
             accessory.trail_index = (accessory.trail_index + 1) % (TRAIL_LENGTH)
             accessory.trail[accessory.trail_index].x = body.pos.x
             accessory.trail[accessory.trail_index].y = body.pos.y

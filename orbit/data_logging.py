@@ -39,7 +39,7 @@ class DataLogger:
             cap           = ((duration_ms / 1000) / target_time) * 100
             self.capacity = str("Capacity        : ") + str(cap)[:5] + str(" %")
 
-            self.speed    = str("Simulation Speed: ") + str("{:.1f}".format(speed))
+            self.speed    = str("Simulation Speed: ") + str("{:.2f}".format(speed))
 
             self.timeSum = 0.0
         

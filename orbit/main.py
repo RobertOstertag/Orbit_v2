@@ -14,7 +14,7 @@ def main():
     random.seed(3)
 
     #create simulation framework
-    gravity_engine = GravityEngine(alghorithm = 3)
+    gravity_engine = GravityEngine(alghorithm=3)
 
     #add bodies to simulation
     #                       pos_x           pos_y           vel_x           vel_y           mass
@@ -32,9 +32,35 @@ def main():
     # gravity_engine.add_body(-80,            -80,            +2.5,           -3,             1)
 
     #Figure 8
-    gravity_engine.add_body(+0,             +0,             -0.93240737,    -0.8643146,     1)
-    gravity_engine.add_body(+0.97000436,    -0.24308753,    +0.93240737/2,  +0.8643146/2,   1)
-    gravity_engine.add_body(-0.97000436,    +0.24308753,    +0.93240737/2,  +0.8643146/2,   1)
+    # gravity_engine.add_body(+0,             +0,             -0.93240737,    -0.8643146,     1)
+    # gravity_engine.add_body(+0.97000436,    -0.24308753,    +0.93240737/2,  +0.8643146/2,   1)
+    # gravity_engine.add_body(-0.97000436,    +0.24308753,    +0.93240737/2,  +0.8643146/2,   1)
+
+    #Broucke 1
+    # gravity_engine.add_body(-0.9892620043,0,   0,1.9169244185,   1)
+    # gravity_engine.add_body(2.2096177241,0,    0,0.1910268738,   1)
+    # gravity_engine.add_body(-1.2203557197,0,    0,-2.1079512924, 1)
+
+    # #Broucke 2
+    # gravity_engine.add_body(0.336130095,0,   0,1.532431537,   1)
+    # gravity_engine.add_body(0.7699893804,0,  0,-0.6287350978,   1)
+    # gravity_engine.add_body(-1.1061194753,0, 0,-0.9036964391, 1)
+
+    #Broucke 3
+    # gravity_engine.add_body(0.0132604844,0,   0,1.05415192,   1)
+    # gravity_engine.add_body(1.4157286016,0,   0,-0.2101466639,   1)
+    # gravity_engine.add_body(-1.4289890859,0,  0,-0.8440052572, 1)
+
+    #Broucke 4
+    gravity_engine.add_body(-0.5426216182,0,   0,0.8750200467,   1)
+    gravity_engine.add_body(2.5274928067,0,   0,-0.0526955841,   1)
+    gravity_engine.add_body(-1.9848711885,0,  0,-0.8223244626, 1)
+
+    #Sheen 1
+    # gravity_engine.add_body(0.486657678894505,0.75504188858351,   -0.182709864466916,0.363013287999004,   1)
+    # gravity_engine.add_body(-0.681737994414464,0.29366023319721,   -0.579074922540872,-0.748157481446087,   1)
+    # gravity_engine.add_body(-0.02259632746864,-0.612645601255358,  0.761784787007641,0.385144193447218, 1)
+
 
     #creat simulation handler for window drawing, scaling, button presses, etc.
     simulation_window = SimulationWindow(gravity_engine)
