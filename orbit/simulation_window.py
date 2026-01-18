@@ -8,6 +8,7 @@ import copy
 import math
 from pyglet.window import Window, key
 import pyglet
+from threading import Thread
 
 from orbit.gravity_engine import CelestialBody, BodyAccessories, GravityEngine
 from orbit.data_logging import DataLogger
@@ -57,8 +58,17 @@ class SimulationWindow:
             radius = self.engine.accesory_list[index].radius * self.scaling
             color = self.engine.accesory_list[index].color.get_rgb_8bit()
             self.body_shape_list.append(pyglet.shapes.Circle(pos_x, pos_y, radius=radius, color=color, batch=self.batch))
+
     
-    def update(self, dt, start_time):
+    def start(self):
+        pyglet.clock.schedule_interval(update, UPDATE_TIME, (self))
+        pyglet.app.run()
+
+    # def update(self, dt, start_time):
+    def update(self):
+        dt = 0
+        start_time = 0
+        print("simulation")
         #update screen visualisation
         for index, body in enumerate(self.engine.body_list):
             self.draw_body(body, self.engine.accesory_list[index], index)
@@ -66,6 +76,13 @@ class SimulationWindow:
 
         #write logging information on the screen
         self.draw_log(dt, start_time, self.engine.dt)
+
+        #self.window.switch_to()
+        #self.window.dispatch_events()
+        self.window.clear()
+        self.batch.draw()
+        #self.window.flip()
+        
 
     def simulation_start(self, loop_function, gravity_engine, simulation_window):
         #schedule a function call to be called every x seconds
@@ -251,3 +268,22 @@ class SimulationWindow:
 
     def on_close(self):
         pass
+
+
+def update(ref):
+    dt = 0
+    start_time = 0
+    print("simulation")
+    #update screen visualisation
+    for index, body in enumerate(ref.engine.body_list):
+        ref.draw_body(body, ref.engine.accesory_list[index], index)
+        ref.draw_trail(ref.engine.accesory_list[index], index)
+
+    #write logging information on the screen
+    ref.draw_log(dt, start_time, ref.engine.dt)
+
+    #self.window.switch_to()
+    #self.window.dispatch_events()
+    ref.window.clear()
+    ref.batch.draw()
+    #self.window.flip()

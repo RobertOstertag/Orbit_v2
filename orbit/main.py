@@ -6,8 +6,10 @@ sys.path.append(str(project_root))
 
 import time
 import random
+
 from orbit.gravity_engine import GravityEngine
 from orbit.simulation_window import SimulationWindow
+from orbit.window_handler import WindowHandler
 
 def main():
     #initialize random seed for color
@@ -66,22 +68,28 @@ def main():
     # gravity_engine.add_body(0.010021708193205,0.363104062311693,   -0.84720090780794,-0.235749148338353,   1)
     # gravity_engine.add_body(0.030978712523174,0.423035485079015,  -0.200636552532016,-0.581655492859626, 1)
 
-    #creat simulation handler for window drawing, scaling, button presses, etc.
-    simulation_window = SimulationWindow(gravity_engine)
+
+    #creat simulation window for drawing, scaling, button presses, etc.
+    # simulation_window = SimulationWindow(gravity_engine)
 
     #start simulation
-    simulation_window.simulation_start(updateLoop, gravity_engine, simulation_window)
+    #simulation_window.simulation_start(updateLoop, gravity_engine, simulation_window)
 
-def updateLoop(dt, gravity_engine:GravityEngine, simulation_window:SimulationWindow):
-    start_time = time.time_ns()
+    window_handler = WindowHandler(gravity_engine)
+    window_handler.run()
 
-    #stop engine when paused
-    if (simulation_window.running == True):
-        #update forces, positions, etc or every object.
-        gravity_engine.update()
 
-    #update window
-    simulation_window.update(dt, start_time)
+
+# def updateLoop(dt, gravity_engine:GravityEngine, simulation_window:SimulationWindow):
+#     start_time = time.time_ns()
+
+#     #stop engine when paused
+#     if (simulation_window.running == True):
+#         #update forces, positions, etc or every object.
+#         gravity_engine.update()
+
+#     #update window
+#     simulation_window.update(dt, start_time)
     
 if __name__ == "__main__":
     main()
