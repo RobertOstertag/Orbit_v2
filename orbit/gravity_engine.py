@@ -27,7 +27,7 @@ class CelestialBody:
         self.color = Color(color_h, color_s, color_v)
 
 class GravityEngine:
-    def __init__(self, shutdown_event:threading.Event, alghorithm):
+    def __init__(self, shutdown_event:threading.Event = None, alghorithm = 3):
         self.shutdown_event = shutdown_event
         #0=Euler, 1=Verlet Integration, 2=Velocity Verlet Integration
         self.alghorithm = alghorithm
