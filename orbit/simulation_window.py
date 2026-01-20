@@ -6,139 +6,153 @@ sys.path.append(str(project_root))
 
 import copy
 import math
-from pyglet.window import Window, key
 import pyglet
-from threading import Thread
+import threading
+import time
 
-from orbit.gravity_engine import CelestialBody, BodyAccessories, GravityEngine
+import orbit.gravity_engine
+from orbit.gravity_engine import CelestialBody, GravityEngine
 from orbit.data_logging import DataLogger
+from orbit.utils import Vector2D
 
 #initial window size
 WINDOW_WIDTH = 800
 WINDOW_HEIGHT = 800
-#how often the simulation will be called (60 times per second)
-UPDATE_TIME = 1/60.0
 #value how much dt is changed when +/- is pressed
 DT_CHANGE = 0.01
 #initial simulation size factor
 SIZE_FACTOR = 1.4
 #trail delta in pixels
 TRAIL_DELTA = 10
+TRAIL_LENGTH = 50
 
-class SimulationWindow:
-    def __init__(self, gravity_engine:GravityEngine):
-        #Pyglet window setup
-        self.window = Window(width = WINDOW_WIDTH, height = WINDOW_HEIGHT, caption = "Orbit Simulation", resizable=True)
-        self.batch = pyglet.graphics.Batch()
-        self.keys = key.KeyStateHandler()
-        self.window.push_handlers(self.keys)
+class SimulationWindow(threading.Thread):
+    def __init__(self, shutdown_event:threading.Event, gravity_engine:GravityEngine, trail_active):
+        super().__init__()
+        self.shutdown_event = shutdown_event
         self.engine = gravity_engine
-        #for registering events
-        self.window.push_handlers(self)
-
         self.width = WINDOW_WIDTH
         self.height = WINDOW_HEIGHT
+        self.scaling = 1.0
+        self.data_logger = DataLogger()
+        self.body_shape_list = []
+        self.trail_active = trail_active
+        self.trail_pos_list = [[] for i in range(TRAIL_LENGTH)]
+        self.trail_shape_list = [[] for i in range(TRAIL_LENGTH - 1)]
+        self.trail_index_list = [0] * len(self.engine.body_list)
+        self.trail_delta = 0
+        self.drawing_time = 0
+        
+        self.pos_x = 0
+        self.pos_y = 0
 
+    def run(self):
+        #Pyglet window setup
+        self.window = pyglet.window.Window(width = self.width, height = self.height, caption = "Orbit Simulation", resizable=True)
+        self.batch = pyglet.graphics.Batch()
+        self.keys = pyglet.window.key.KeyStateHandler()
+        #for registering events
+        self.window.push_handlers(self)
         #resize simulation size to show initial positions of celestial bodies
         self.simulation_window_resize()
         #scale trail delta intially
         self.trail_delta_scale()
 
-        self.scaling = 1.0
-        self.data_logger = DataLogger()
-        self.running = True
-
-        self.body_shape_list = []
-        self.trail_shape_list = [None] * len(gravity_engine.body_list)
-
-        #create initial bodies
-        for index, body in enumerate(self.engine.body_list):
-            pos_x = self.scale_x(body.pos.x)
-            pos_y = self.scale_x(body.pos.y)
-            radius = self.engine.accesory_list[index].radius * self.scaling
-            color = self.engine.accesory_list[index].color.get_rgb_8bit()
+        #create initial body shapes and trail shapes
+        for body_index, body in enumerate(self.engine.body_list):
+            pos_x = int(self.scale_x(body.pos.x))
+            pos_y = int(self.scale_x(body.pos.y))
+            radius = body.radius * self.scaling
+            color = body.color.get_rgb_8bit()
             self.body_shape_list.append(pyglet.shapes.Circle(pos_x, pos_y, radius=radius, color=color, batch=self.batch))
 
-    
-    def start(self):
-        pyglet.clock.schedule_interval(update, UPDATE_TIME, (self))
-        pyglet.app.run()
-
-    # def update(self, dt, start_time):
-    def update(self):
-        dt = 0
-        start_time = 0
-        print("simulation")
-        #update screen visualisation
-        for index, body in enumerate(self.engine.body_list):
-            self.draw_body(body, self.engine.accesory_list[index], index)
-            self.draw_trail(self.engine.accesory_list[index], index)
-
-        #write logging information on the screen
-        self.draw_log(dt, start_time, self.engine.dt)
-
-        #self.window.switch_to()
-        #self.window.dispatch_events()
-        self.window.clear()
-        self.batch.draw()
-        #self.window.flip()
-        
-
-    def simulation_start(self, loop_function, gravity_engine, simulation_window):
+            if self.trail_active:
+                for i in range(TRAIL_LENGTH):
+                    self.trail_pos_list[body_index].append(Vector2D(body.pos.x, body.pos.y))
+                    self.trail_shape_list[body_index].append(pyglet.shapes.Line(pos_x, pos_y, pos_x, pos_y, color=color, batch=self.batch))
+                                  
         #schedule a function call to be called every x seconds
-        pyglet.clock.schedule_interval(loop_function, UPDATE_TIME, gravity_engine, simulation_window)
+        pyglet.clock.schedule_interval(self.update, orbit.gravity_engine.UPDATE_RATE)
         #run the pyglet app
         pyglet.app.run()
 
-    def draw_body(self, body:CelestialBody, accessory:BodyAccessories, shape_index):
+    def update(self, dt):
+        start_time = time.perf_counter()
+        self.pos_x, self.pos_y = self.window.get_location()
+
+        #update screen visuals
+        for body_index, body in enumerate(self.engine.body_list):
+            self.draw_body(body, body_index)
+            if self.trail_active:
+                self.update_trail(body, body_index)
+                self.draw_trail(body_index)
+        
+        self.drawing_time = time.perf_counter() - start_time
+
+        #write logging information on the screen
+        self.draw_log(dt)
+
+        #check if other window was closed and if so, close myself
+        if self.shutdown_event.is_set():
+            self.stop()
+
+    def draw_body(self, body:CelestialBody, body_index):
         pos_x = self.scale_x(body.pos.x)
         pos_y = self.scale_y(body.pos.y)
 
         #only draw when the object is visible on screen
-        radius = accessory.radius*self.scaling
-        if self.check_boundary(pos_x, pos_y, radius):
-            self.body_shape_list[shape_index].visible = True
-            self.body_shape_list[shape_index].position = (pos_x, pos_y)
-            self.body_shape_list[shape_index].radius = accessory.radius * self.scaling
+        radius = body.radius*self.scaling
+        if self.check_boundaries(pos_x, pos_y, radius):
+            self.body_shape_list[body_index].visible = True
+            self.body_shape_list[body_index].position = (pos_x, pos_y)
+            self.body_shape_list[body_index].radius = body.radius * self.scaling
         else:
-            self.body_shape_list[shape_index].visible = False
+            self.body_shape_list[body_index].visible = False
 
+    def update_trail(self, body:CelestialBody, body_index):
+        #check if body position moved a delta away from the last trail index
+        #ToDo: real distance calculation would be more accurate but this will do for now
+        if ((math.fabs(body.pos.x - self.trail_pos_list[body_index][self.trail_index_list[body_index]].x) >= self.trail_delta) or
+            (math.fabs(body.pos.y - self.trail_pos_list[body_index][self.trail_index_list[body_index]].y) >= self.trail_delta)):
+            #get index of oldest position
+            oldest_index = (self.trail_index_list[body_index] + 1) % (TRAIL_LENGTH)
+            #overwrite oldest position to new body position
+            self.trail_pos_list[body_index][oldest_index].x = body.pos.x
+            self.trail_pos_list[body_index][oldest_index].y = body.pos.y
+            #oldest index is now the next index to be checked against
+            self.trail_index_list[body_index] = oldest_index
 
-    def draw_trail(self, accessory:BodyAccessories, shape_index):
-        trail_index = copy.deepcopy(accessory.trail_index)
-        trail_list = []
+    def draw_trail(self, body_index):
+        newest_index = self.trail_index_list[body_index]
+        #go over every position in the list and draw a line between 2 points
+        for i in range(len(self.trail_pos_list[body_index]) - 1):
+            #next point is the second oldest one
+            next_index = (newest_index - 1) % (TRAIL_LENGTH)
+            x1 = self.scale_x(self.trail_pos_list[body_index][newest_index].x)
+            y1 = self.scale_y(self.trail_pos_list[body_index][newest_index].y)
+            x2 = self.scale_x(self.trail_pos_list[body_index][next_index].x)
+            y2 = self.scale_y(self.trail_pos_list[body_index][next_index].y)
+            #check either point is in the window screen
+            if (self.check_boundaries(x1, y1, 0) or
+                self.check_boundaries(x2, y2, 0)):
+                self.trail_shape_list[body_index][i].visible = True
+                self.trail_shape_list[body_index][i].x = x1
+                self.trail_shape_list[body_index][i].y = y1
+                self.trail_shape_list[body_index][i].x2 = x2
+                self.trail_shape_list[body_index][i].y2 = y2
+            #if none is on the window the line can be disabled
+            else:
+                self.trail_shape_list[body_index][i].visible = False
+            newest_index = next_index
 
-        valid = False
-        for i in (range(len(accessory.trail) - 1)):
-            point_x = float(accessory.trail[int(trail_index)].x)
-            point_y = float(accessory.trail[int(trail_index)].y)
-
-            #go to next element in trail Array
-            trail_index = (trail_index - 1) % len(accessory.trail)
-
-            #check if trail element was written once (initial all zeroes)
-            if ((point_x != 0) or (point_y != 0)):
-                scaled_x = self.scale_x(point_x)
-                scaled_y = self.scale_y(point_y)
-                trail_list.append([scaled_x, scaled_y])
-
-                if (self.check_boundary(scaled_x, scaled_y, 0) == True):
-                    valid = True
-
-        #create multiline if one point of trail_list is on the screen
-        if valid == True:
-            self.trail_shape_list[shape_index] = pyglet.shapes.MultiLine(*trail_list, color=accessory.color.get_rgb_8bit(), batch=self.batch)
-        else:
-            self.trail_shape_list[shape_index] = None
-
-    def check_boundary(self, x, y, r):
+    def check_boundaries(self, x, y, r):
         if (((x + r >= 0) and (x - r <= self.width)) and
             ((y + r >= 0) and (y - r <= self.height))):
             return True
         return False
 
-    def draw_log(self, dt, start_time, speed):
-        log = self.data_logger.log(dt, start_time, UPDATE_TIME, speed)
+    def draw_log(self, dt):
+        log = self.data_logger.log(dt, self.engine.simulation_time, self.drawing_time, self.engine.dt)
         self.label = pyglet.text.Label(
                         log, font_name='Consolas', font_size=12,
                         x=10, y=self.height-10, anchor_x='left', anchor_y='top',
@@ -179,7 +193,7 @@ class SimulationWindow:
 
     def trail_delta_scale(self):
         simulation_per_pixel = (self.max_x - self.min_x) / self.width
-        self.engine.trail_delta = simulation_per_pixel * TRAIL_DELTA
+        self.trail_delta = simulation_per_pixel * TRAIL_DELTA
 
     def scale_x(self, orig_x):
         return ((orig_x - self.min_x) / (self.max_x - self.min_x)) * self.width
@@ -248,17 +262,17 @@ class SimulationWindow:
         self.min_y -= dy_scaled
 
     def on_key_press(self, symbol, modifiers):
-        if symbol == key.SPACE:
-            self.running = not self.running
+        if symbol == pyglet.window.key.SPACE:
+            self.engine.running = not self.engine.running
 
-        elif (symbol == key.PLUS) or (symbol == key.NUM_ADD):
+        elif (symbol == pyglet.window.key.PLUS) or (symbol == pyglet.window.key.NUM_ADD):
             #skip over 0.0
             if (math.isclose(self.engine.dt + DT_CHANGE, 0.0, abs_tol=1e-5)):
                 self.engine.change_dt(self.engine.dt + (DT_CHANGE * 2))
             else:
                 self.engine.change_dt(self.engine.dt + DT_CHANGE)
 
-        elif (symbol == key.MINUS) or (symbol == key.NUM_SUBTRACT):
+        elif (symbol == pyglet.window.key.MINUS) or (symbol == pyglet.window.key.NUM_SUBTRACT):
             #skip over 0.0
             if (math.isclose(self.engine.dt - DT_CHANGE, 0.0, abs_tol=1e-5)):
                 self.engine.change_dt(self.engine.dt - (DT_CHANGE * 2))
@@ -267,23 +281,9 @@ class SimulationWindow:
     
 
     def on_close(self):
-        pass
+        #notify other thread that this window is closed
+        self.shutdown_event.set()
+        self.stop()
 
-
-def update(ref):
-    dt = 0
-    start_time = 0
-    print("simulation")
-    #update screen visualisation
-    for index, body in enumerate(ref.engine.body_list):
-        ref.draw_body(body, ref.engine.accesory_list[index], index)
-        ref.draw_trail(ref.engine.accesory_list[index], index)
-
-    #write logging information on the screen
-    ref.draw_log(dt, start_time, ref.engine.dt)
-
-    #self.window.switch_to()
-    #self.window.dispatch_events()
-    ref.window.clear()
-    ref.batch.draw()
-    #self.window.flip()
+    def stop(self):
+        pyglet.app.exit()

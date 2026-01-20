@@ -4,63 +4,72 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.append(str(project_root))
 
-from orbit.utils import Vector2D, Color
 import math
 import copy
+import time
+import threading
 
+from orbit.utils import Vector2D, Color
+
+UPDATE_RATE = 1/60.0
 GRAVITIONAL_CONSTANT = 1 #6.6743e-11
-TRAIL_LENGTH = 350
 START_DT = 0.01
 
 class CelestialBody:
-    def __init__(self, pos:Vector2D, vel:Vector2D, mass, radius = None, color_h = 360, color_s = 1.0, color_v = 1.0):
+    def __init__(self, pos:Vector2D, vel:Vector2D, mass, radius, color_h = 360, color_s = 1.0, color_v = 1.0):
         self.pos = pos
         self.vel = vel
         self.acc = Vector2D(0.0, 0.0)
-
         self.prev_pos = self.pos - vel #only used for verlet integration
         self.prev_acc = Vector2D(0.0, 0.0) #used for velocity verlet integration
-
         self.mass = mass
-
-class BodyAccessories:
-    def __init__(self, initial_pos:Vector2D, radius, color_h = 360, color_s = 1.0, color_v = 1.0):
         self.radius = radius
         self.color = Color(color_h, color_s, color_v)
 
-        self.trail = [Vector2D(0, 0) for i in range(TRAIL_LENGTH)]
-        self.trail[0] = copy.deepcopy(initial_pos)
-        self.trail_index = 0
-
 class GravityEngine:
-    def __init__(self, alghorithm):
+    def __init__(self, shutdown_event:threading.Event, alghorithm):
+        self.shutdown_event = shutdown_event
         #0=Euler, 1=Verlet Integration, 2=Velocity Verlet Integration
         self.alghorithm = alghorithm
         #timestep per engine call
         self.dt = START_DT
         #list of all celestial bodies in the simulation
         self.body_list = []
-        #additional information for every celestial body
-        self.accesory_list = []
         #for color picking when new bodies are added
         self.hue = 0
-        #to determine if new trail point is added
-        self.trail_delta = 0
+        #for time measurement how long the simulation took
+        self.simulation_time = 0
+        #to pause the simulation
+        self.running = True
 
     def add_body(self, pos_x, pos_y, vel_x, vel_y, mass):
-        body = CelestialBody(Vector2D(pos_x, pos_y), Vector2D(vel_x, vel_y), mass=mass)
+        body = CelestialBody(Vector2D(pos_x, pos_y), Vector2D(vel_x, vel_y), mass=mass, radius=math.sqrt(mass)+4, color_h=self.hue)
         #rescale prev_pos if verlet integration is active
         if self.alghorithm == 1:
             self.update_prev_pos(body, self.dt)
         #add body to list
         self.body_list.append(body)
-
-        accessory = BodyAccessories(Vector2D(pos_x, pos_y), radius=math.sqrt(mass)+4, color_h=self.hue)
-        self.accesory_list.append(accessory)
         self.hue += 55
 
+    def start(self):
+        accumalator = 0
+        last = time.perf_counter()
+
+        #run engine until eithersimulation window or control window is closed
+        while not self.shutdown_event.is_set():
+            now = time.perf_counter()
+            accumalator += now - last
+            last = now
+            while accumalator >= UPDATE_RATE:
+                if self.running:
+                    self.update()
+                accumalator -= UPDATE_RATE
+            #without this line the program freezes
+            time.sleep(0)
 
     def update(self):
+        start_time = time.perf_counter()
+
         #Euler Method
         if (self.alghorithm == 0):
             self.euler_method()
@@ -76,10 +85,8 @@ class GravityEngine:
         #Runge-Kutta 4 Method
         elif (self.alghorithm == 3):
             self.runge_kutta_4_method()
-
-        #update trail of every body (alghorithm independent)
-        for i, body in enumerate(self.body_list):
-            self.update_trail(body, self.accesory_list[i])
+        
+        self.simulation_time = time.perf_counter() - start_time
 
 
     def euler_method(self):
@@ -202,15 +209,6 @@ class GravityEngine:
                     # other_body.acc += (Vector2D(0, 0) - direction_norm) * (body.mass / (direction_magn * direction_magn))
                 j += 1
             i += 1
-
-
-    def update_trail(self, body:CelestialBody, accessory:BodyAccessories):
-        #ToDo: real distance calculation would be more accurate but this will do for now
-        if ((math.fabs(body.pos.x - accessory.trail[accessory.trail_index].x) >= self.trail_delta) or
-            (math.fabs(body.pos.y - accessory.trail[accessory.trail_index].y) >= self.trail_delta)):
-            accessory.trail_index = (accessory.trail_index + 1) % (TRAIL_LENGTH)
-            accessory.trail[accessory.trail_index].x = body.pos.x
-            accessory.trail[accessory.trail_index].y = body.pos.y
 
     def change_dt(self, new_dt):
         #for Verlet Integration the previous position needs to be changed according to the change of dt
