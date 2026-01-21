@@ -40,7 +40,7 @@ class GravityEngine:
         #for time measurement how long the simulation took
         self.simulation_time = 0
         #to pause the simulation
-        self.running = True
+        self.running = False
 
     def add_body(self, pos_x, pos_y, vel_x, vel_y, mass):
         body = CelestialBody(Vector2D(pos_x, pos_y), Vector2D(vel_x, vel_y), mass=mass, radius=math.sqrt(mass)+4, color_h=self.hue)

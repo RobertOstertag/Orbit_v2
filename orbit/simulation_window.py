@@ -42,6 +42,7 @@ class SimulationWindow(threading.Thread):
         self.trail_index_list = [0] * len(self.engine.body_list)
         self.trail_delta = 0
         self.drawing_time = 0
+        self.init_counter = 0
         
         self.pos_x = 0
         self.pos_y = 0
@@ -51,6 +52,7 @@ class SimulationWindow(threading.Thread):
         self.window = pyglet.window.Window(width = self.width, height = self.height, caption = "Orbit Simulation", resizable=True)
         self.batch = pyglet.graphics.Batch()
         self.keys = pyglet.window.key.KeyStateHandler()
+        self.window.set_location(orbit.control_window.WINDOW_WIDTH + 200, 200)
         #for registering events
         self.window.push_handlers(self)
         #resize simulation size to show initial positions of celestial bodies
@@ -70,7 +72,7 @@ class SimulationWindow(threading.Thread):
                 for i in range(TRAIL_LENGTH):
                     self.trail_pos_list[body_index].append(Vector2D(body.pos.x, body.pos.y))
                     self.trail_shape_list[body_index].append(pyglet.shapes.Line(pos_x, pos_y, pos_x, pos_y, color=color, batch=self.batch))
-                                  
+
         #schedule a function call to be called every x seconds
         pyglet.clock.schedule_interval(self.update, orbit.gravity_engine.UPDATE_RATE)
         #run the pyglet app
@@ -78,6 +80,13 @@ class SimulationWindow(threading.Thread):
 
     def update(self, dt):
         start_time = time.perf_counter()
+        #wait 2 cycles for pyglet to properly setup (without this wait the gravity engine will run multiple times before the window is drawn)
+        if self.init_counter <= 2:
+            self.init_counter += 1
+            if self.init_counter > 2:
+                self.engine.running = True
+
+        #for control window attachement
         self.pos_x, self.pos_y = self.window.get_location()
 
         #update screen visuals
