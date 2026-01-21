@@ -6,7 +6,6 @@ sys.path.append(str(project_root))
 
 from orbit.gravity_engine import GravityEngine
 
-import math
 import time
 
 NUMBER_OF_ITERATIONS = 10000
@@ -136,7 +135,7 @@ def simulate_bodies(engine:GravityEngine, target_error):
 
 def calculate_system_energy(body_list):
     kinetic_energy = 0
-    gravity_energy = 0
+    potential_energy = 0
     for body in body_list:
         kinetic_energy += 0.5 * body.mass * body.vel.magnitude() * body.vel.magnitude()
 
@@ -146,16 +145,15 @@ def calculate_system_energy(body_list):
         for other_body in body_list:
             #only calculate half of every combination because it is redundant
             if i < j:
-                gravity_energy += -(body.mass * other_body.mass) / (body.pos - other_body.pos).magnitude()
+                potential_energy -= (body.mass * other_body.mass) / (body.pos - other_body.pos).magnitude()
             j += 1
         i += 1
-    return kinetic_energy + gravity_energy
+    return kinetic_energy + potential_energy
 
 
 if __name__ == "__main__":
     print()
-    # assert(math.isclose(9, 10, rel_tol=0.1))
-    # assert(True == False)
+
     test_GravityEngine_energy_euler_1_body()
     test_GravityEngine_energy_euler_2_body()
     test_GravityEngine_energy_euler_3_body()

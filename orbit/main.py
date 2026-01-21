@@ -16,13 +16,13 @@ def main():
     gravity_engine = GravityEngine(shutdown_event, alghorithm=3)
 
     #add bodies to simulation
-    # gravity_engine.add_body(0.336130095,0,   0,1.532431537,   1)
-    # gravity_engine.add_body(0.7699893804,0,  0,-0.6287350978,   1)
-    # gravity_engine.add_body(-1.1061194753,0, 0,-0.9036964391, 1)
+    gravity_engine.add_body(0.336130095,0,   0,1.532431537,   1)
+    gravity_engine.add_body(0.7699893804,0,  0,-0.6287350978,   1)
+    gravity_engine.add_body(-1.1061194753,0, 0,-0.9036964391, 1)
 
-    gravity_engine.add_body(+0,             +0,             -0.93240737,    -0.8643146,     1)
-    gravity_engine.add_body(+0.97000436,    -0.24308753,    +0.93240737/2,  +0.8643146/2,   1)
-    gravity_engine.add_body(-0.97000436,    +0.24308753,    +0.93240737/2,  +0.8643146/2,   1)
+    # gravity_engine.add_body(+0,             +0,             -0.93240737,    -0.8643146,     1)
+    # gravity_engine.add_body(+0.97000436,    -0.24308753,    +0.93240737/2,  +0.8643146/2,   1)
+    # gravity_engine.add_body(-0.97000436,    +0.24308753,    +0.93240737/2,  +0.8643146/2,   1)
 
     simulation_window = SimulationWindow(shutdown_event, gravity_engine, True)
     control_window = ControlWindow(shutdown_event, simulation_window)

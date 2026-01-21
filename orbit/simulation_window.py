@@ -171,25 +171,11 @@ class SimulationWindow(threading.Thread):
             if body.pos.y > max_y:
                 max_y = copy.deepcopy(body.pos.y)
         
-        if (max_x > -min_x):
-            min_x = -max_x
-        else:
-            max_x = -min_x
-        if (max_y > -min_y):
-            min_y = -max_y
-        else:
-            max_y = -min_y
-
-        if (max_x - min_x) > (max_y - min_y):
-            self.min_x = min_x * SIZE_FACTOR
-            self.max_x = max_x * SIZE_FACTOR
-            self.min_y = min_x * SIZE_FACTOR
-            self.max_y = max_x * SIZE_FACTOR
-        else:
-            self.min_x = min_y * SIZE_FACTOR
-            self.max_x = max_y * SIZE_FACTOR
-            self.min_y = min_y * SIZE_FACTOR
-            self.max_y = max_y * SIZE_FACTOR
+        range = max(max(abs(max_x), abs(min_x)), max(abs(max_y), abs(min_y)))
+        self.min_x = - range * SIZE_FACTOR
+        self.max_x = range * SIZE_FACTOR
+        self.min_y = - range * SIZE_FACTOR
+        self.max_y = range * SIZE_FACTOR
 
     def trail_delta_scale(self):
         simulation_per_pixel = (self.max_x - self.min_x) / self.width
@@ -235,9 +221,9 @@ class SimulationWindow(threading.Thread):
 
         #update simulation size according to mouse position
         self.max_x = mouse_pos_x + ((self.max_x - mouse_pos_x) * scale_value)
-        self.min_x = mouse_pos_x - ((mouse_pos_x - self.min_x) * scale_value)
+        self.min_x = mouse_pos_x + ((self.min_x - mouse_pos_x) * scale_value)
         self.max_y = mouse_pos_y + ((self.max_y - mouse_pos_y) * scale_value)
-        self.min_y = mouse_pos_y - ((mouse_pos_y - self.min_y) * scale_value)
+        self.min_y = mouse_pos_y + ((self.min_y - mouse_pos_y) * scale_value)
 
     def on_resize(self, new_width, new_height):
         #calculate change of window screen and accordingly change simulation sizes
