@@ -10,6 +10,7 @@ import time
 import threading
 
 from orbit.utils import Vector2D, Color
+import orbit.presets
 
 UPDATE_RATE = 1/60.0
 GRAVITIONAL_CONSTANT = 1 #6.6743e-11
@@ -26,11 +27,15 @@ class CelestialBody:
         self.radius = radius
         self.color = Color(color_h, color_s, color_v)
 
-class GravityEngine:
-    def __init__(self, shutdown_event:threading.Event = None, alghorithm = 3):
-        self.shutdown_event = shutdown_event
+class GravityEngine(threading.Thread):
+    def __init__(self, alghorithm = 3, shutdown_event:threading.Event = None, preset_event:threading.Event = None, init_draw_event:threading.Event = None):
+        super().__init__()
         #0=Euler, 1=Verlet Integration, 2=Velocity Verlet Integration
         self.alghorithm = alghorithm
+        #events
+        self.shutdown_event = shutdown_event
+        self.preset_event = preset_event
+        self.init_draw_event = init_draw_event
         #timestep per engine call
         self.dt = START_DT
         #list of all celestial bodies in the simulation
@@ -41,17 +46,11 @@ class GravityEngine:
         self.simulation_time = 0
         #to pause the simulation
         self.running = False
+        #for preset loading
+        self.preset = orbit.presets.PRESETS[2]
+        self.preset_event.set()
 
-    def add_body(self, pos_x, pos_y, vel_x, vel_y, mass):
-        body = CelestialBody(Vector2D(pos_x, pos_y), Vector2D(vel_x, vel_y), mass=mass, radius=math.sqrt(mass)+4, color_h=self.hue)
-        #rescale prev_pos if verlet integration is active
-        if self.alghorithm == 1:
-            self.update_prev_pos(body, self.dt)
-        #add body to list
-        self.body_list.append(body)
-        self.hue += 55
-
-    def start(self):
+    def run(self):
         accumalator = 0
         last = time.perf_counter()
 
@@ -61,32 +60,34 @@ class GravityEngine:
             accumalator += now - last
             last = now
             while accumalator >= UPDATE_RATE:
-                if self.running:
-                    self.update()
+                self.update()
                 accumalator -= UPDATE_RATE
             #without this line the program freezes
             time.sleep(0)
 
     def update(self):
-        start_time = time.perf_counter()
+        self.check_for_preset_load()
 
-        #Euler Method
-        if (self.alghorithm == 0):
-            self.euler_method()
+        if self.running:
+            start_time = time.perf_counter()
 
-        #Verlet Integration
-        elif (self.alghorithm == 1):
-            self.verlet_integration()
+            #Euler Method
+            if (self.alghorithm == 0):
+                self.euler_method()
 
-        #Velocity Verlet Integration
-        elif (self.alghorithm == 2):
-            self.velocity_verlet_integration()
+            #Verlet Integration
+            elif (self.alghorithm == 1):
+                self.verlet_integration()
 
-        #Runge-Kutta 4 Method
-        elif (self.alghorithm == 3):
-            self.runge_kutta_4_method()
-        
-        self.simulation_time = time.perf_counter() - start_time
+            #Velocity Verlet Integration
+            elif (self.alghorithm == 2):
+                self.velocity_verlet_integration()
+
+            #Runge-Kutta 4 Method
+            elif (self.alghorithm == 3):
+                self.runge_kutta_4_method()
+            
+            self.simulation_time = time.perf_counter() - start_time
 
 
     def euler_method(self):
@@ -210,6 +211,52 @@ class GravityEngine:
                 j += 1
             i += 1
 
+    def add_body(self, pos_x, pos_y, vel_x, vel_y, mass):
+        body = CelestialBody(Vector2D(pos_x, pos_y), Vector2D(vel_x, vel_y), mass=mass, radius=math.sqrt(mass)+4, color_h=self.hue)
+        #rescale prev_pos if verlet integration is active
+        if self.alghorithm == 1:
+            self.update_prev_pos(body, self.dt)
+        #add body to list
+        self.body_list.append(body)
+        self.hue += 55
+
+    def delete_body(self, index):
+        if index < len(self.body_list):
+            self.body_list.pop(index)
+
+    def check_for_preset_load(self):
+        if self.preset_event.is_set():
+            self.preset_event.clear()
+            #delete all bodies
+            self.body_list.clear()
+            #get new preset
+            match self.preset:
+                case "Simple":
+                    preset_list = orbit.presets.SIMPLE
+                case "Many Bodies":
+                    preset_list = orbit.presets.MANY_BODIES
+                case "Figure Eight":
+                    preset_list = orbit.presets.FIGURE_8
+                case "Broucke 1":
+                    preset_list = orbit.presets.BROUCKE_1
+                case "Broucke 2":
+                    preset_list = orbit.presets.BROUCKE_2
+                case "Broucke 3":
+                    preset_list = orbit.presets.BROUCKE_3
+                case "Broucke 4":
+                    preset_list = orbit.presets.BROUCKE_4
+                case "Sheen 1":
+                    preset_list = orbit.presets.SHEEN_1
+
+            #add all bodies from presets to body_list
+            for index, preset_body in enumerate(range(len(preset_list))):
+                self.add_body(preset_list[index][0], preset_list[index][1], preset_list[index][2], preset_list[index][3], preset_list[index][4])
+            
+            self.hue = 0
+
+            #notify simulation window to redraw everything
+            self.init_draw_event.set()
+
     def change_dt(self, new_dt):
         #for Verlet Integration the previous position needs to be changed according to the change of dt
         for body in self.body_list:
@@ -217,11 +264,24 @@ class GravityEngine:
 
         self.dt = new_dt
 
-
     def update_prev_pos(self, body, scale):
         temp_vel = body.pos - body.prev_pos
         new_vel = temp_vel * scale
         body.prev_pos = body.pos - new_vel
+
+    def get_body_information(self, index):
+        if index < len(self.body_list):
+            mass = self.body_list[index].mass
+            pos_x = self.body_list[index].pos.x
+            pos_y = self.body_list[index].pos.y
+            vel_x = self.body_list[index].vel.x
+            vel_y = self.body_list[index].vel.y
+            return (mass, pos_x, pos_y, vel_x, vel_y)
+        else:
+            return (0, 0, 0, 0, 0)
+    
+    def set_preset(self, preset_name):
+        self.preset = preset_name
 
 
 if __name__ == "__main__":

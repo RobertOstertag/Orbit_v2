@@ -27,22 +27,26 @@ TRAIL_DELTA = 10
 TRAIL_LENGTH = 50
 
 class SimulationWindow(threading.Thread):
-    def __init__(self, shutdown_event:threading.Event, gravity_engine:GravityEngine, trail_active):
+    def __init__(self, gravity_engine:GravityEngine, trail_active, shutdown_event:threading.Event, marked_event:threading.Event, init_draw_event:threading.Event):
         super().__init__()
-        self.shutdown_event = shutdown_event
         self.engine = gravity_engine
+        self.trail_active = trail_active
+        self.shutdown_event = shutdown_event
+        self.marked_event = marked_event
+        self.init_draw_event = init_draw_event
+
         self.width = WINDOW_WIDTH
         self.height = WINDOW_HEIGHT
         self.scaling = 1.0
         self.data_logger = DataLogger()
         self.body_shape_list = []
-        self.trail_active = trail_active
         self.trail_pos_list = [[] for i in range(TRAIL_LENGTH)]
         self.trail_shape_list = [[] for i in range(TRAIL_LENGTH - 1)]
-        self.trail_index_list = [0] * len(self.engine.body_list)
+        self.trail_index_list = []
         self.trail_delta = 0
         self.drawing_time = 0
         self.init_counter = 0
+        self.marked_body = None
         
         self.pos_x = 0
         self.pos_y = 0
@@ -55,12 +59,28 @@ class SimulationWindow(threading.Thread):
         self.window.set_location(orbit.control_window.WINDOW_WIDTH + 200, 200)
         #for registering events
         self.window.push_handlers(self)
+
+        #create initial body shapes and trail shapes
+        self.intial_setup()
+
+        #schedule a function call to be called every x seconds
+        pyglet.clock.schedule_interval(self.update, orbit.gravity_engine.UPDATE_RATE)
+        #run the pyglet app
+        pyglet.app.run()
+
+    def intial_setup(self):
         #resize simulation size to show initial positions of celestial bodies
         self.simulation_window_resize()
         #scale trail delta intially
         self.trail_delta_scale()
 
-        #create initial body shapes and trail shapes
+        self.scaling = 1.0
+
+        self.body_shape_list = []
+        self.trail_pos_list = [[] for i in range(TRAIL_LENGTH)]
+        self.trail_shape_list = [[] for i in range(TRAIL_LENGTH - 1)]
+        self.trail_index_list = []
+
         for body_index, body in enumerate(self.engine.body_list):
             pos_x = int(self.scale_x(body.pos.x))
             pos_y = int(self.scale_x(body.pos.y))
@@ -72,13 +92,13 @@ class SimulationWindow(threading.Thread):
                 for i in range(TRAIL_LENGTH):
                     self.trail_pos_list[body_index].append(Vector2D(body.pos.x, body.pos.y))
                     self.trail_shape_list[body_index].append(pyglet.shapes.Line(pos_x, pos_y, pos_x, pos_y, color=color, batch=self.batch))
-
-        #schedule a function call to be called every x seconds
-        pyglet.clock.schedule_interval(self.update, orbit.gravity_engine.UPDATE_RATE)
-        #run the pyglet app
-        pyglet.app.run()
+                self.trail_index_list = [0] * len(self.engine.body_list)
 
     def update(self, dt):
+        if self.init_draw_event.is_set():
+            self.init_draw_event.clear()
+            self.intial_setup()
+
         start_time = time.perf_counter()
         #wait 2 cycles for pyglet to properly setup (without this wait the gravity engine will run multiple times before the window is drawn)
         if self.init_counter <= 2:
@@ -89,12 +109,15 @@ class SimulationWindow(threading.Thread):
         #for control window attachement
         self.pos_x, self.pos_y = self.window.get_location()
 
-        #update screen visuals
-        for body_index, body in enumerate(self.engine.body_list):
-            self.draw_body(body, body_index)
-            if self.trail_active:
-                self.update_trail(body, body_index)
-                self.draw_trail(body_index)
+        #create copy of body_list so even when bodies get deleted, the drawing can still work
+        if (len(self.engine.body_list) != 0):
+            body_list = copy.deepcopy(self.engine.body_list)
+            #update screen visuals
+            for body_index, body in enumerate(body_list):
+                self.draw_body(body, body_index)
+                if self.trail_active:
+                    self.update_trail(body, body_index)
+                    self.draw_trail(body_index)
         
         self.drawing_time = time.perf_counter() - start_time
 
@@ -167,7 +190,6 @@ class SimulationWindow(threading.Thread):
                         x=10, y=self.height-10, anchor_x='left', anchor_y='top',
                         batch=self.batch, multiline=True, width=300)
 
-
     def simulation_window_resize(self):
         min_x, max_x, min_y, max_y = 0.0, 0.0, 0.0, 0.0
         for body in self.engine.body_list:
@@ -195,20 +217,6 @@ class SimulationWindow(threading.Thread):
     
     def scale_y(self, orig_y):
         return ((orig_y - self.min_y) / (self.max_y - self.min_y)) * self.height
-
-        # def find_celestial_body(self, x, y):
-        #     for i in range(len(self.celestialBodies)):
-        #         scaled_radius = self.celestialBodies[i].radius * self.scaling
-        #         mouse_max_x = (((x + scaled_radius) / self.width) * (self.max_x - self.min_x)) + self.min_x
-        #         mouse_min_x = (((x - scaled_radius) / self.width) * (self.max_x - self.min_x)) + self.min_x
-        #         mouse_max_y = (((y + scaled_radius) / self.height) * (self.max_y - self.min_y)) + self.min_y 
-        #         mouse_min_y = (((y - scaled_radius) / self.height) * (self.max_y - self.min_y)) + self.min_y
-        #         if ((self.celestialBodies[i].pos.x > mouse_min_x) and
-        #             (self.celestialBodies[i].pos.x < mouse_max_x) and
-        #             (self.celestialBodies[i].pos.y > mouse_min_y) and
-        #             (self.celestialBodies[i].pos.y < mouse_max_y)):
-        #             return i
-        #     return None
 
     def on_draw(self):
         self.window.clear()
@@ -274,6 +282,21 @@ class SimulationWindow(threading.Thread):
             else:
                 self.engine.change_dt(self.engine.dt - DT_CHANGE)
     
+    def on_mouse_press(self, x, y, button, modifiers):
+        #on mouse left click
+        if (button == 1):
+           self.marked_body = self.find_body(x, y)
+           self.marked_event.set()
+
+    def find_body(self, x, y):
+        for i, body in enumerate(self.engine.body_list):
+            body_x = self.scale_x(body.pos.x)
+            body_y = self.scale_y(body.pos.y)
+            radius = body.radius * self.scaling
+            if ((x >= body_x - radius) and (x <= body_x + radius) and
+                (y >= body_y - radius) and (y <= body_y + radius)):
+                return i
+        return None
 
     def on_close(self):
         #notify other thread that this window is closed
