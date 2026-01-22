@@ -28,7 +28,6 @@ class ControlWindow(threading.Thread):
         #create window
         self.window = tk.Tk()
         self.window.title("Orbit Control")
-        #self.window.geometry(f"{WINDOW_WIDTH}x{WINDOW_HEIGHT}")
         self.window.geometry(f"{WINDOW_WIDTH}x{self.sim_window.height}+{self.sim_window.pos_x-WINDOW_WIDTH-10}+{self.sim_window.pos_y - 30}")
         self.window.resizable(False, False)
         #define function to be called when window is closed
@@ -109,7 +108,7 @@ class ControlWindow(threading.Thread):
         row += 1
         tk.Label(self.body_frame, text="Presets", font=self.font, width=10).grid(row=row, column=0, padx=0, pady=(30, 0))
         self.presets = orbit.presets.PRESETS
-        self.selected_preset = tk.StringVar(value=self.presets[0])
+        self.selected_preset = tk.StringVar(value=self.presets[2])
         self.menu_presets = tk.OptionMenu(self.body_frame, self.selected_preset, *self.presets)
         self.menu_presets.config(width=13, height=1, font=self.font)
         self.menu_presets.grid(row=row, column=1, columnspan=2, padx=0, pady=(30, 0))
