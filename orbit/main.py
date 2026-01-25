@@ -6,23 +6,23 @@ sys.path.append(str(project_root))
 
 import threading
 import time
+import queue
 
 from orbit.gravity_engine import GravityEngine
 from orbit.simulation_window import SimulationWindow
 from orbit.control_window import ControlWindow
+from orbit.utils import ControlEvents
+
 
 def main():
-    threading.Event
-    shutdown_event = threading.Event()
-    marked_event = threading.Event()
-    preset_event = threading.Event()
-    init_draw_event = threading.Event()
+    events = ControlEvents()
+    body_pos_queue = queue.Queue(1)
 
     #create simulation framework
     alghorithm = 3
-    gravity_engine = GravityEngine(alghorithm, shutdown_event, preset_event, init_draw_event)
-    simulation_window = SimulationWindow(gravity_engine, True, shutdown_event, marked_event, init_draw_event)
-    control_window = ControlWindow(simulation_window, gravity_engine, shutdown_event, marked_event, preset_event)
+    gravity_engine = GravityEngine(alghorithm, body_pos_queue, events)
+    simulation_window = SimulationWindow(gravity_engine, True, body_pos_queue, events)
+    control_window = ControlWindow(simulation_window, gravity_engine, events)
 
     #start all threads
     gravity_engine.start()

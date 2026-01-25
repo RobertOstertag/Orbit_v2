@@ -1,4 +1,5 @@
 import math
+import threading
 
 class Vector2D:
     def __init__(self, x:float, y:float):
@@ -90,3 +91,13 @@ class Color:
             if i == 5: return [v, w, q]
             if i >= 6: return [0, 0, 0]
         else: return [v, v, v]
+
+
+class ControlEvents:
+    def __init__(self):
+        self.stop = threading.Event()
+        self.initialize = threading.Event()
+        self.running = threading.Event()
+        self.load_preset = threading.Event()
+        self.dt_increment = threading.Event()
+        self.dt_decrement =threading.Event()

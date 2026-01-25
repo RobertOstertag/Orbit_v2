@@ -6,11 +6,14 @@ import time
 import orbit.gravity_engine
 
 #update logging information every 60ms
-REFRESH_TIME = 60.0/1000.0
+REFRESH_TIME = 200.0/1000.0
 
 class DataLogger:
     def __init__(self):
-        self.timeSum = 0.0
+        self.accumalator = 0
+        self.now = time.perf_counter()
+        self.last = time.perf_counter()
+
         self.memory    = str("Memory Usage    : ") + str(0)[:5] + str(" MByte")
         self.sim_time  = str("Simulation Time : ") + str(0)[:5] + str(" ms")
         self.sim_cap   = str("Simulation Cap. : ") + str(0)[:5] + str(" %")
@@ -18,10 +21,15 @@ class DataLogger:
         self.draw_cap  = str("Drawing Capacity: ") + str(0)[:5] + str(" %")
         self.speed     = str("Simulation Speed: ") + str(0)[:3]
 
-    def log(self, time_since_last_call, sim_time, draw_time, speed):
-        self.timeSum += time_since_last_call
+    def log(self, sim_time, draw_time, engine_speed):
+        self.now = time.perf_counter()
+
+        self.accumalator += self.now - self.last
+        self.last = self.now
         #only update log sometimes so that the values can be read easily
-        if self.timeSum >= REFRESH_TIME:
+        if self.accumalator >= REFRESH_TIME:
+            self.accumalator = 0
+
             self.memory    = str("Memory Usage    : ") + str(psutil.Process().memory_info().rss / (1000 ** 2))[:5] + str(" MByte")
 
             self.sim_time  = str("Simulation Time : ") + str(sim_time*1000)[:5] + str(" ms")
@@ -32,7 +40,7 @@ class DataLogger:
             draw_capacity  = (draw_time / orbit.gravity_engine.UPDATE_RATE) * 100
             self.draw_cap  = str("Drawing Capacity: ") + str(draw_capacity)[:5] + str(" %")
 
-            self.speed     = str("Simulation Speed: ") + str("{:.2f}".format(speed))
+            self.speed     = str("Simulation Speed: ") + str("{:.2f}".format(engine_speed))
             self.timeSum   = 0.0
         return self.memory + str("\n") + self.sim_time + str("\n") + self.sim_cap + str("\n") + self.draw_time + str("\n") + self.draw_cap + str("\n") + self.speed
 

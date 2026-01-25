@@ -8,14 +8,17 @@ import math
 import copy
 import time
 import threading
+import queue
 
-from orbit.utils import Vector2D, Color
+from orbit.utils import Vector2D, Color, ControlEvents
 import orbit.presets
 
 UPDATE_RATE = 1/60.0
 GRAVITIONAL_CONSTANT = 1 #6.6743e-11
 START_DT = 0.01
-
+#value how much dt is changed when +/- is pressed
+DT_CHANGE = 0.01
+    
 class CelestialBody:
     def __init__(self, pos:Vector2D, vel:Vector2D, mass, radius, color_h = 360, color_s = 1.0, color_v = 1.0):
         self.pos = pos
@@ -28,14 +31,14 @@ class CelestialBody:
         self.color = Color(color_h, color_s, color_v)
 
 class GravityEngine(threading.Thread):
-    def __init__(self, alghorithm = 3, shutdown_event:threading.Event = None, preset_event:threading.Event = None, init_draw_event:threading.Event = None):
+    def __init__(self, alghorithm, body_pos_queue:queue.Queue, events:ControlEvents):
         super().__init__()
         #0=Euler, 1=Verlet Integration, 2=Velocity Verlet Integration
         self.alghorithm = alghorithm
-        #events
-        self.shutdown_event = shutdown_event
-        self.preset_event = preset_event
-        self.init_draw_event = init_draw_event
+        #queue
+        self.body_pos_queue = body_pos_queue
+        #save references to all events
+        self.events = events
         #timestep per engine call
         self.dt = START_DT
         #list of all celestial bodies in the simulation
@@ -44,18 +47,18 @@ class GravityEngine(threading.Thread):
         self.hue = 0
         #for time measurement how long the simulation took
         self.simulation_time = 0
-        #to pause the simulation
-        self.running = False
         #for preset loading
         self.preset = orbit.presets.PRESETS[2]
-        self.preset_event.set()
+        self.events.load_preset.set()
+
+        self.events.running.set()
 
     def run(self):
         accumalator = 0
         last = time.perf_counter()
 
-        #run engine until eithersimulation window or control window is closed
-        while not self.shutdown_event.is_set():
+        #run engine until either simulation window or control window is closed
+        while not self.events.stop.is_set():
             now = time.perf_counter()
             accumalator += now - last
             last = now
@@ -66,9 +69,10 @@ class GravityEngine(threading.Thread):
             time.sleep(0)
 
     def update(self):
-        self.check_for_preset_load()
+        self.handle_presets()
+        self.handle_dt()
 
-        if self.running:
+        if self.events.running.is_set():
             start_time = time.perf_counter()
 
             #Euler Method
@@ -86,6 +90,13 @@ class GravityEngine(threading.Thread):
             #Runge-Kutta 4 Method
             elif (self.alghorithm == 3):
                 self.runge_kutta_4_method()
+
+
+            #delete remaining queue object if possible
+            try: self.body_pos_queue.get_nowait()
+            except queue.Empty: pass
+            #put new bodies into queue
+            self.body_pos_queue.put_nowait(self.body_list)
             
             self.simulation_time = time.perf_counter() - start_time
 
@@ -223,10 +234,10 @@ class GravityEngine(threading.Thread):
     def delete_body(self, index):
         if index < len(self.body_list):
             self.body_list.pop(index)
-
-    def check_for_preset_load(self):
-        if self.preset_event.is_set():
-            self.preset_event.clear()
+            
+    def handle_presets(self):
+        if self.events.load_preset.is_set():
+            self.events.load_preset.clear()
             #delete all bodies
             self.body_list.clear()
             #get new preset
@@ -255,13 +266,29 @@ class GravityEngine(threading.Thread):
             self.hue = 0
 
             #notify simulation window to redraw everything
-            self.init_draw_event.set()
+            self.events.initialize.set()
+
+    def handle_dt(self):
+        if self.events.dt_increment.is_set():
+            #skip over 0.0
+            if (math.isclose(self.dt + DT_CHANGE, 0.0, abs_tol=1e-5)):
+                self.change_dt(self.dt + (DT_CHANGE * 2))
+            else:
+                self.change_dt(self.dt + DT_CHANGE)
+            self.events.dt_increment.clear()
+        
+        if self.events.dt_decrement.is_set():
+            #skip over 0.0
+            if (math.isclose(self.dt - DT_CHANGE, 0.0, abs_tol=1e-5)):
+                self.change_dt(self.dt - (DT_CHANGE * 2))
+            else:
+                self.change_dt(self.dt - DT_CHANGE)
+            self.events.dt_decrement.clear()
 
     def change_dt(self, new_dt):
         #for Verlet Integration the previous position needs to be changed according to the change of dt
         for body in self.body_list:
             self.update_prev_pos(body, (new_dt / self.dt))
-
         self.dt = new_dt
 
     def update_prev_pos(self, body, scale):

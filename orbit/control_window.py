@@ -6,6 +6,7 @@ sys.path.append(str(project_root))
 
 from orbit.gravity_engine import GravityEngine
 from orbit.simulation_window import SimulationWindow
+from orbit.utils import ControlEvents
 import orbit.gravity_engine
 import orbit.presets
 
@@ -16,13 +17,11 @@ WINDOW_WIDTH = 350
 WINDOW_HEIGHT = 400
 
 class ControlWindow(threading.Thread):
-    def __init__(self, sim_window:SimulationWindow, engine:GravityEngine, shutdown_event:threading.Event, marked_event:threading.Event, preset_event:threading.Event):
+    def __init__(self, sim_window:SimulationWindow, engine:GravityEngine, events:ControlEvents):
         super().__init__()
         self.sim_window = sim_window
         self.engine = engine
-        self.shutdown_event = shutdown_event
-        self.marked_event = marked_event
-        self.preset_event = preset_event
+        self.events = events
 
     def run(self):
         #create window
@@ -125,15 +124,15 @@ class ControlWindow(threading.Thread):
         #set window left of simulation window location
         self.window.geometry(f"{WINDOW_WIDTH}x{self.sim_window.height}+{self.sim_window.pos_x-WINDOW_WIDTH-10}+{self.sim_window.pos_y - 30}")
 
-        if self.marked_event.is_set():
-            self.marked_event.clear()
-            self.update_body_information()
-        if self.engine.running == True:
+        # if self.marked_event.is_set():
+        #     self.update_body_information()
+        #     self.marked_event.clear()
+        if self.events.running.is_set():
             self.update_body_information()
 
 
         #check if other window was closed and if so, close myself
-        if self.shutdown_event.is_set():
+        if self.events.stop.is_set():
             self.stop()
             return
         #call function again after delay
@@ -171,7 +170,7 @@ class ControlWindow(threading.Thread):
 
     def on_close(self):
         #notify other thread that this window is closed
-        self.shutdown_event.set()
+        self.events.stop.set()
         self.stop()
 
     def stop(self):
