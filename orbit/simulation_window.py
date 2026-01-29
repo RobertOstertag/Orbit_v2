@@ -4,63 +4,185 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.append(str(project_root))
 
-import copy
 import math
 import pyglet
 import threading
 import time
-import queue
 
 import orbit.gravity_engine
-from orbit.gravity_engine import CelestialBody, GravityEngine
+from orbit.gravity_engine import CelestialBody
 from orbit.data_logging import DataLogger
-from orbit.utils import Vector2D, ControlEvents
+from orbit.utils import EventContainer, QueueContainer
 
 #initial window size
 WINDOW_WIDTH = 800
 WINDOW_HEIGHT = 800
+WINDOW_POS_X = 550
+WINDOW_POS_Y = 230
 #initial simulation size factor
 SIZE_FACTOR = 1.4
+#scaling factor
+SCALE_FACTOR = 1.1
 #trail delta in pixels
 TRAIL_DELTA = 10
 TRAIL_LENGTH = 50
+
+class World():
+    def __init__(self, min_x, max_x, min_y, max_y, screen_width, screen_height, scaling):
+        self.min_x = min_x
+        self.max_x = max_x
+        self.min_y = min_y
+        self.max_y = max_y
+        self.screen_width = screen_width
+        self.screen_height = screen_height
+        self.scaling = scaling
+    
+    def fit(self, min_pos_x, max_pos_x, min_pos_y, max_pos_y):
+        range = max(max(abs(max_pos_x), abs(min_pos_x)), max(abs(max_pos_y), abs(min_pos_y)))
+        range = range * SIZE_FACTOR
+        self.min_x = -range
+        self.max_x = range
+        self.min_y = -range
+        self.max_y = range
+        self.scaling = 1.0
+
+    def world_to_screen(self, wx, wy):
+        sx = ((wx - self.min_x) / (self.max_x - self.min_x)) * self.screen_width
+        sy = ((wy - self.min_y) / (self.max_y - self.min_y)) * self.screen_height
+        return (sx, sy)
+
+    def screen_to_world(self, sx, sy):
+        wx = ((sx / self.screen_width) * (self.max_x - self.min_x) + self.min_x)
+        wy = ((sy / self.screen_height) * (self.max_y - self.min_y) + self.min_y)
+        return (wx, wy)
+    
+    def resize(self, new_width, new_height):
+        #calculate change of window screen and accordingly change simulation sizes
+        sdx = self.screen_width - new_width
+        wdx = (sdx / self.screen_width) * (self.max_x - self.min_x)
+        self.max_x -= wdx
+        #dont change min_x, only on the right new space is added
+        sdy = self.screen_height - new_height
+        wdy = (sdy / self.screen_height) * (self.max_y - self.min_y)
+        self.max_y -= wdy
+        #dont change min_y, only on the top new space is added
+        #udpate internal window size
+        self.screen_width = new_width
+        self.screen_height = new_height
+
+    def shift(self, sdx, sdy):
+        wdx = (sdx / self.screen_width) * (self.max_x - self.min_x)
+        self.min_x -= wdx 
+        self.max_x -= wdx
+        wdy = (sdy / self.screen_height) * (self.max_y - self.min_y)
+        self.min_y -= wdy 
+        self.max_y -= wdy
+    
+    def scale(self, scaling, sx, sy):
+        #used for radius scaling
+        self.scaling = self.scaling * scaling
+        #transform position from window to screen frame
+        wx, wy = self.screen_to_world(sx, sy)
+        #update world size according to position
+        self.min_x = wx + ((self.min_x - wx) / scaling)
+        self.max_x = wx + ((self.max_x - wx) / scaling)
+        self.min_y = wy + ((self.min_y - wy) / scaling)
+        self.max_y = wy + ((self.max_y - wy) / scaling)
+
+    def check_boundaries(self, x, y, r):
+        if (((x + r >= 0) and (x - r <= self.screen_width)) and
+            ((y + r >= 0) and (y - r <= self.screen_height))):
+            return True
+        return False
+    
+
+class BodyShapes():
+    def __init__(self, world:World, wx, wy, radius, color, batch):
+        self.world = world
+        self.radius = radius / self.world.scaling
+        sx, sy = self.world.world_to_screen(wx, wy)
+        self.body = pyglet.shapes.Circle(sx, sy, radius=self.radius, color=color, batch=batch)
+        self.trails = []
+        for _ in range(TRAIL_LENGTH):
+            self.trails.append(pyglet.shapes.Line(sx, sy, sx, sy, color=color, batch=batch))
+        self.trail_index = 0
+
+    def draw(self, wx, wy):
+        sx, sy = self.world.world_to_screen(wx, wy)
+        self.update_body(sx, sy)
+        self.update_trail(sx, sy)
+
+    def update_body(self, x, y):
+        self.body.position = (x, y)
+        self.body.radius = self.radius * self.world.scaling
+
+    def update_trail(self, x, y):
+        #connect current line shape position to current body shape position
+        self.trails[self.trail_index].x2 = x
+        self.trails[self.trail_index].y2 = y
+        #check if body position moved a delta away from the last trail index
+        #ToDo: real distance calculation would be more ^^^^^^^^^^accurate but this will do for now
+        if ((math.fabs(x - self.trails[self.trail_index].x) >= TRAIL_DELTA * self.world.scaling) or
+            (math.fabs(y - self.trails[self.trail_index].y) >= TRAIL_DELTA * self.world.scaling)):
+            #get index of next line to be drawn
+            next_index = (self.trail_index + 1) % (TRAIL_LENGTH)
+            #set start of next line to position of current body position
+            self.trails[next_index].x = x
+            self.trails[next_index].y = y
+            self.trails[next_index].x2 = x
+            self.trails[next_index].y2 = y
+            #update index
+            self.trail_index = next_index
+
+    def shift(self, dx, dy):
+        self.body.position = (self.body.x + dx, self.body.y + dy)
+        for trail in self.trails:
+            trail.x += dx
+            trail.y += dy
+            trail.x2 += dx
+            trail.y2 += dy
+
+    def scale(self, scaling, sx, sy):
+        body_x_scale = sx + ((self.body.x - sx) * scaling)
+        body_y_scale = sy + ((self.body.y - sy) * scaling)
+        self.body.position = (body_x_scale, body_y_scale)
+        self.body.radius = self.body.radius * scaling
+
+        for trail in self.trails:
+            trail.x = sx + ((trail.x - sx) * scaling)
+            trail.y = sy + ((trail.y - sy) * scaling)
+            trail.x2 = sx + ((trail.x2 - sx) * scaling)
+            trail.y2 = sy + ((trail.y2 - sy) * scaling)
+
+    def delete(self):
+        self.body.delete()
+        for trail_shape in self.trails:
+            trail_shape.delete()
+
     
 class SimulationWindow(threading.Thread):
-    def __init__(self, gravity_engine:GravityEngine, trail_active, body_pos_queue:queue.Queue, events:ControlEvents):
+    def __init__(self, trail_active, queues:QueueContainer, events:EventContainer):
         super().__init__()
-        self.engine = gravity_engine
         self.trail_active = trail_active
-        self.body_pos_queue = body_pos_queue
+        self.queues = queues
         self.events = events
 
-        self.width = WINDOW_WIDTH
-        self.height = WINDOW_HEIGHT
-        self.scaling = 1.0
-        self.data_logger = DataLogger()
-        self.body_shape_list = []
-        self.trail_shape_list = [[] for i in range(TRAIL_LENGTH)]
-        self.trail_index_list = []
+        self.bodies = None
+        self.body_shapes = []
+        self.world = World(-1, +1, -1, +1, WINDOW_WIDTH, WINDOW_HEIGHT, 1.0)
         self.drawing_time = 0
-        self.marked_body = None
-        self.min_x = -1
-        self.max_x = +1
-        self.min_y = -1
-        self.max_y = +1
-        self.running = True
-        
-        self.pos_x = 0
-        self.pos_y = 0
+        self.marked_body_index = None
+        self.data_logger = DataLogger()
 
     def run(self):
         #Pyglet window setup
-        self.window = pyglet.window.Window(width = self.width, height = self.height, caption = "Orbit Simulation", resizable=True)
+        self.window = pyglet.window.Window(width = WINDOW_WIDTH, height = WINDOW_HEIGHT, caption = "Orbit Simulation", resizable=True)
         self.batch = pyglet.graphics.Batch()
         self.keys = pyglet.window.key.KeyStateHandler()
-        self.window.set_location(orbit.control_window.WINDOW_WIDTH + 200, 200)
-        #for registering events like on_draw, on_scroll, etc.
+        self.window.set_location(WINDOW_POS_X, WINDOW_POS_Y)
+        #for registering events (on_draw, on_scroll, etc.)
         self.window.push_handlers(self)
         #schedule the update function to be called every x ms
-        #pyglet.clock.schedule(self.update)
         pyglet.clock.schedule_interval(self.update, orbit.gravity_engine.UPDATE_RATE)
         #run the pyglet app
         pyglet.app.run()
@@ -69,194 +191,96 @@ class SimulationWindow(threading.Thread):
         #check if window needs to be closed
         if not self.events.stop.is_set():
             #check if new body positions are available
-            try: self.bodies = self.body_pos_queue.get_nowait()
-            except queue.Empty:
-                pass
-            
-            #initialize all shapes and other necessary parts when requested
-            self.initialize_if_needed(self.bodies)
-            #for control_window attachement
-            self.pos_x, self.pos_y = self.window.get_location()
+            self.bodies = self.queues.bodies.receive(self.bodies)
 
             start_time = time.perf_counter()
             #update screen visuals
-            if self.running:
+            if ((self.events.running.is_set()) and
+                (self.bodies != None)):
+                #initialize all shapes and other necessary parts when requested
+                self.initialize_if_needed(self.bodies)
+
+                #draw all bodies and trails
                 for body_index, body in enumerate(self.bodies):
-                    self.draw_body(body, body_index)
-                if self.trail_active:
-                    for shape_index, body_shape in enumerate(self.body_shape_list):
-                        self.draw_trail(body_shape, shape_index)
+                    self.body_shapes[body_index].draw(body.pos.x, body.pos.y)
+
             self.drawing_time = time.perf_counter() - start_time
 
             #write logging information on the screen
             self.draw_log()
+
+            #send marked body information
+            mass, pos_x, pos_y, vel_x, vel_y = 0, 0, 0, 0, 0
+            if ((self.marked_body_index != None) and
+                (self.marked_body_index < len(self.bodies))):
+                mass  = self.bodies[self.marked_body_index].mass
+                pos_x = self.bodies[self.marked_body_index].pos.x
+                pos_y = self.bodies[self.marked_body_index].pos.y
+                vel_x = self.bodies[self.marked_body_index].vel.x
+                vel_y = self.bodies[self.marked_body_index].vel.y
+            self.queues.marked_body.send([self.marked_body_index, mass, pos_x, pos_y, vel_x, vel_y])
         else:
             self.stop()
 
     def initialize_if_needed(self, bodies):
         if self.events.initialize.is_set():
-            #resize simulation size to show initial positions of celestial bodies
-            self.simulation_window_resize()
+            #resize simulation size to show all initial positions of celestial bodies
+            self.world_resize(bodies)
 
-            self.scaling = 1.0
-            self.body_shape_list = []
-            self.trail_shape_list = [[] for i in range(TRAIL_LENGTH - 1)]
-            self.trail_index_list = []
-
-            #create a shape for every body
-            for body_index, body in enumerate(bodies):
-                pos_x = int(self.world_to_screen(body.pos.x, self.min_x, self.max_x, self.width))
-                pos_y = int(self.world_to_screen(body.pos.y, self.min_y, self.max_y, self.height))
-                radius = body.radius * self.scaling
-                color = body.color.get_rgb_8bit()
-                self.body_shape_list.append(pyglet.shapes.Circle(pos_x, pos_y, radius=radius, color=color, batch=self.batch))
-
-                #for every body create a list of trail shapes
-                if self.trail_active:
-                    for i in range(TRAIL_LENGTH):
-                        self.trail_shape_list[body_index].append(pyglet.shapes.Line(pos_x, pos_y, pos_x, pos_y, color=color, batch=self.batch))
-                #add a list of ring buffer indices
-                self.trail_index_list = [0] * len(bodies)
+            for body_shape in self.body_shapes:
+                body_shape.delete()
+            self.body_shapes = []
+            for body in bodies:
+                self.body_shapes.append(BodyShapes(self.world, body.pos.x, body.pos.y, body.radius, body.color.get_rgb_8bit(), self.batch))
 
             #clear event
             self.events.initialize.clear()
 
-    def draw_body(self, body:CelestialBody, body_index):
-        pos_x = self.world_to_screen(body.pos.x, self.min_x, self.max_x, self.width)
-        pos_y = self.world_to_screen(body.pos.y, self.min_y, self.max_y, self.height)
-        radius = body.radius * self.scaling
-
-        self.body_shape_list[body_index].position = (pos_x, pos_y)
-        self.body_shape_list[body_index].radius = radius
-
-    def draw_trail(self, body_shape:pyglet.shapes.Circle, shape_index):
-        #get index of oldest position
-        oldest_index = (self.trail_index_list[shape_index] + 1) % (TRAIL_LENGTH)
-        #connect last position to current body shape position
-        self.trail_shape_list[shape_index][oldest_index].x = self.trail_shape_list[shape_index][self.trail_index_list[shape_index]].x2
-        self.trail_shape_list[shape_index][oldest_index].y = self.trail_shape_list[shape_index][self.trail_index_list[shape_index]].y2
-        self.trail_shape_list[shape_index][oldest_index].x2 = body_shape.x
-        self.trail_shape_list[shape_index][oldest_index].y2 = body_shape.y
-
-        #check if body position moved a delta away from the last trail index
-        #ToDo: real distance calculation would be more accurate but this will do for now
-        if ((math.fabs(body_shape.x - self.trail_shape_list[shape_index][self.trail_index_list[shape_index]].x2) >= TRAIL_DELTA * self.scaling) or
-            (math.fabs(body_shape.y - self.trail_shape_list[shape_index][self.trail_index_list[shape_index]].y2) >= TRAIL_DELTA * self.scaling)):
-            #oldest index is now the next index to be checked against
-            self.trail_index_list[shape_index] = oldest_index
-
-    def check_boundaries(self, x, y, r):
-        if (((x + r >= 0) and (x - r <= self.width)) and
-            ((y + r >= 0) and (y - r <= self.height))):
-            return True
-        return False
-
     def draw_log(self):
-        log = self.data_logger.log(self.engine.simulation_time, self.drawing_time, self.engine.dt)
+        log_string = self.data_logger.get_string(self.queues.engine_duration.receive(0), self.drawing_time, self.queues.engine_timestep.receive(0))
         self.label = pyglet.text.Label(
-                        log, font_name='Consolas', font_size=12,
-                        x=10, y=self.height-10, anchor_x='left', anchor_y='top',
-                        batch=self.batch, multiline=True, width=300)
+                        log_string, font_name='Consolas', font_size=12,
+                        x=10, y=self.world.screen_height-10, anchor_x='left', anchor_y='top',
+                        batch=self.batch, multiline=True, width=350)
 
-    def simulation_window_resize(self):
-        min_x, max_x, min_y, max_y = 0.0, 0.0, 0.0, 0.0
-        for body in self.engine.body_list:
-            if body.pos.x < min_x:
-                min_x = copy.deepcopy(body.pos.x)
-            if body.pos.x > max_x:
-                max_x = copy.deepcopy(body.pos.x)
-            if body.pos.y < min_y:
-                min_y = copy.deepcopy(body.pos.y)
-            if body.pos.y > max_y:
-                max_y = copy.deepcopy(body.pos.y)
-        
-        range = max(max(abs(max_x), abs(min_x)), max(abs(max_y), abs(min_y)))
-        self.min_x = - range * SIZE_FACTOR
-        self.max_x = range * SIZE_FACTOR
-        self.min_y = - range * SIZE_FACTOR
-        self.max_y = range * SIZE_FACTOR
-
-    def world_to_screen(self, world_coord, world_min, world_max, screen_size):
-        return ((world_coord - world_min) / (world_max - world_min)) * screen_size
-
-    def screen_to_world(self, screen_coord, world_min, world_max, screen_size):
-        return ((screen_coord / screen_size) * (world_max - world_min) + world_min)
+    def world_resize(self, bodies):
+        min_pos_x, max_pos_x, min_pos_y, max_pos_y = 0.0, 0.0, 0.0, 0.0
+        for body in bodies:
+            if body.pos.x < min_pos_x:
+                min_pos_x = body.pos.x
+            if body.pos.x > max_pos_x:
+                max_pos_x = body.pos.x
+            if body.pos.y < min_pos_y:
+                min_pos_y = body.pos.y
+            if body.pos.y > max_pos_y:
+                max_pos_y = body.pos.y
+        self.world.fit(min_pos_x, max_pos_x, min_pos_y, max_pos_y)
     
     def on_draw(self):
         self.window.clear()
         self.batch.draw()
 
     def on_mouse_drag(self, x, y, dx, dy, button, modifiers):
-        #shift simulation min and max according to scaled dx or dy
-        dx_scaled = dx * ((self.max_x - self.min_x) / self.width)
-        self.min_x = self.min_x - dx_scaled 
-        self.max_x = self.max_x - dx_scaled
-        dy_scaled = dy * ((self.max_y - self.min_y) / self.height)
-        self.min_y = self.min_y - dy_scaled
-        self.max_y = self.max_y - dy_scaled
-
-        #redraw all shapes
-        for body_shape in self.body_shape_list:
-            body_shape.x += dx
-            body_shape.y += dy
-        for trail_list in self.trail_shape_list:
-            for trail_shape in trail_list:
-                trail_shape.x += dx
-                trail_shape.y += dy
-                trail_shape.x2 += dx
-                trail_shape.y2 += dy
+        #shift world according to dx and dy
+        self.world.shift(dx, dy)
+        #shift all shapes
+        body_shape:BodyShapes
+        for body_shape in self.body_shapes:
+            body_shape.shift(dx, dy)
 
 
     def on_resize(self, new_width, new_height):
-        #calculate change of window screen and accordingly change simulation sizes
-        dx = self.width - new_width
-        dx_scaled = dx * ((self.max_x - self.min_x) / self.width)
-        #dont change min_x, only on the right new space is added
-        self.max_x = self.max_x - dx_scaled
-        dy = self.height - new_height
-        dy_scaled = dy * ((self.max_y - self.min_y) / self.height)
-        #dont change min_y, only on the top new space is added
-        self.max_y = self.max_y - dy_scaled
-
-        #udpate internal window size
-        self.width = new_width
-        self.height = new_height
+        self.world.resize(new_width, new_height)
 
     def on_mouse_scroll(self, x, y, scroll_x, scroll_y):
-        #depending on scroll wheel direction set scaling value
-        if (scroll_y > 0):
-            scale_value = 2/3
-        else:
-            scale_value = 3/2
+        #only scale when mouswheel is moved up or down
+        if (scroll_y != 0):
+            #1.1^-1 or 1.1^+1
+            scaling = SCALE_FACTOR ** scroll_y
+            self.world.scale(scaling, x, y)
 
-        #not needed here but used for radius scaling
-        self.scaling = self.scaling / scale_value
-        
-        #transform mouse position from window to simulation frame
-        mouse_pos_x = ((x / self.width) * (self.max_x - self.min_x)) + self.min_x
-        mouse_pos_y = ((y / self.height) * (self.max_y - self.min_y)) + self.min_y
-        #update simulation size according to mouse position
-        new_min_x = mouse_pos_x + ((self.min_x - mouse_pos_x) * scale_value)
-        new_max_x = mouse_pos_x + ((self.max_x - mouse_pos_x) * scale_value)
-        new_min_y = mouse_pos_y + ((self.min_y - mouse_pos_y) * scale_value)
-        new_max_y = mouse_pos_y + ((self.max_y - mouse_pos_y) * scale_value)
-
-        #redraw every shape
-        for body_shape in self.body_shape_list:
-            body_shape.x = self.world_to_screen(self.screen_to_world(body_shape.x, self.min_x, self.max_x, self.width), new_min_x, new_max_x, self.width)
-            body_shape.y = self.world_to_screen(self.screen_to_world(body_shape.y, self.min_y, self.max_y, self.height), new_min_y, new_max_y, self.height)
-            body_shape.radius = body_shape.radius / scale_value
-        for trail_list in self.trail_shape_list:
-            for trail_shape in trail_list:
-                trail_shape.x = self.world_to_screen(self.screen_to_world(trail_shape.x, self.min_x, self.max_x, self.width), new_min_x, new_max_x, self.width)
-                trail_shape.y = self.world_to_screen(self.screen_to_world(trail_shape.y, self.min_y, self.max_y, self.height), new_min_y, new_max_y, self.height)
-                trail_shape.x2 = self.world_to_screen(self.screen_to_world(trail_shape.x2, self.min_x, self.max_x, self.width), new_min_x, new_max_x, self.width)
-                trail_shape.y2 = self.world_to_screen(self.screen_to_world(trail_shape.y2, self.min_y, self.max_y, self.height), new_min_y, new_max_y, self.height)
-
-        self.min_x = new_min_x
-        self.max_x = new_max_x
-        self.min_y = new_min_y
-        self.max_y = new_max_y
+            for body_shape in self.body_shapes:
+                body_shape.scale(scaling, x, y)
 
     def on_key_press(self, symbol, modifiers):
         if symbol == pyglet.window.key.SPACE:
@@ -264,7 +288,6 @@ class SimulationWindow(threading.Thread):
                 self.events.running.clear()
             else:
                 self.events.running.set()
-            self.running = not self.running
 
         elif (symbol == pyglet.window.key.PLUS) or (symbol == pyglet.window.key.NUM_ADD):
             self.events.dt_increment.set()
@@ -273,19 +296,14 @@ class SimulationWindow(threading.Thread):
             self.events.dt_decrement.set()
 
     def on_mouse_press(self, x, y, button, modifiers):
-        pass
         #on mouse left click
-        # if (button == 1):
-        #    self.marked_body = self.find_body(x, y)
-        #    self.marked_event.set()
+        if (button == 1):
+           self.marked_body_index = self.find_body(x, y, self.body_shapes)
 
-    def find_body(self, x, y):
-        for i, body in enumerate(self.engine.body_list):
-            body_x = self.world_to_screen_x(body.pos.x, self.width, self.min_x, self.max_x)
-            body_y = self.world_to_screen_y(body.pos.y, self.height, self.min_y, self.max_y)
-            radius = body.radius * self.scaling
-            if ((x >= body_x - radius) and (x <= body_x + radius) and
-                (y >= body_y - radius) and (y <= body_y + radius)):
+    def find_body(self, x, y, body_shapes):
+        for i, body in enumerate(body_shapes):
+            if ((x >= body.body.x - body.body.radius) and (x <= body.body.x + body.body.radius) and
+                (y >= body.body.y - body.body.radius) and (y <= body.body.y + body.body.radius)):
                 return i
         return None
 
@@ -295,10 +313,6 @@ class SimulationWindow(threading.Thread):
         self.stop()
 
     def stop(self):
-        for body_shape in self.body_shape_list:
+        for body_shape in self.body_shapes:
             body_shape.delete()
-        for trail_list in self.trail_shape_list:
-            for trail_shape in trail_list:
-                trail_shape.delete()
-
         pyglet.app.exit()

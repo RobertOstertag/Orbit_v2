@@ -14,14 +14,12 @@ class DataLogger:
         self.now = time.perf_counter()
         self.last = time.perf_counter()
 
-        self.memory    = str("Memory Usage    : ") + str(0)[:5] + str(" MByte")
-        self.sim_time  = str("Simulation Time : ") + str(0)[:5] + str(" ms")
-        self.sim_cap   = str("Simulation Cap. : ") + str(0)[:5] + str(" %")
-        self.draw_time = str("Drawing Time    : ") + str(0)[:5] + str(" ms")
-        self.draw_cap  = str("Drawing Capacity: ") + str(0)[:5] + str(" %")
-        self.speed     = str("Simulation Speed: ") + str(0)[:3]
+        self.memory          = str("Memory Usage    : ") + str(0)[:5] + str(" MByte")
+        self.engine_duration = str("Simulation Time : ") + str(0)[:4] + str(" ms (") + str(0)[:4] + str(" %)")
+        self.draw_duration   = str("Drawing Time    : ") + str(0)[:4] + str(" ms (") + str(0)[:4] + str(" %)")
+        self.engine_timestep = str("Simulation Speed: ") + str(0)[:3]
 
-    def log(self, sim_time, draw_time, engine_speed):
+    def get_string(self, engine_duration, draw_duration, engine_timestep):
         self.now = time.perf_counter()
 
         self.accumalator += self.now - self.last
@@ -30,19 +28,15 @@ class DataLogger:
         if self.accumalator >= REFRESH_TIME:
             self.accumalator = 0
 
-            self.memory    = str("Memory Usage    : ") + str(psutil.Process().memory_info().rss / (1000 ** 2))[:5] + str(" MByte")
+            engine_capacity   = (engine_duration / orbit.gravity_engine.UPDATE_RATE) * 100
+            draw_capacity  = (draw_duration / orbit.gravity_engine.UPDATE_RATE) * 100
 
-            self.sim_time  = str("Simulation Time : ") + str(sim_time*1000)[:5] + str(" ms")
-            sim_capacity   = (sim_time / orbit.gravity_engine.UPDATE_RATE) * 100
-            self.sim_cap   = str("Simulation Cap. : ") + str(sim_capacity)[:5] + str(" %")
+            self.memory          = str("Memory Usage    : ") + str(psutil.Process().memory_info().rss / (1000 ** 2))[:5] + str(" MByte")
+            self.engine_duration = str("Simulation Time : ") + str(engine_duration*1000)[:4] + str(" ms (") + str(engine_capacity)[:4] + str(" %)")
+            self.draw_duration   = str("Drawing Time    : ") + str(draw_duration*1000)[:4] + str(" ms (") + str(draw_capacity)[:4] + str(" %)")
+            self.engine_timestep = str("Simulation Speed: ") + str("{:.2f}".format(engine_timestep))
 
-            self.draw_time = str("Drawing Time    : ") + str(draw_time*1000)[:5] + str(" ms")
-            draw_capacity  = (draw_time / orbit.gravity_engine.UPDATE_RATE) * 100
-            self.draw_cap  = str("Drawing Capacity: ") + str(draw_capacity)[:5] + str(" %")
-
-            self.speed     = str("Simulation Speed: ") + str("{:.2f}".format(engine_speed))
-            self.timeSum   = 0.0
-        return self.memory + str("\n") + self.sim_time + str("\n") + self.sim_cap + str("\n") + self.draw_time + str("\n") + self.draw_cap + str("\n") + self.speed
+        return self.memory + str("\n") + self.engine_duration + str("\n") + self.draw_duration + str("\n") + self.engine_timestep
 
 def hide_terminal_cursor():
     if os.name == 'nt':

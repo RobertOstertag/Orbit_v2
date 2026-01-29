@@ -4,35 +4,55 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.append(str(project_root))
 
-from orbit.gravity_engine import GravityEngine
 from orbit.simulation_window import SimulationWindow
-from orbit.utils import ControlEvents
+from orbit.utils import EventContainer, QueueContainer
 import orbit.gravity_engine
 import orbit.presets
 
 import tkinter as tk
 import threading
+import queue
 
 WINDOW_WIDTH = 350
-WINDOW_HEIGHT = 400
+WINDOW_HEIGHT = 800
+WINDOW_POS_X = 150
+WINDOW_POS_Y = 200
 
 class ControlWindow(threading.Thread):
-    def __init__(self, sim_window:SimulationWindow, engine:GravityEngine, events:ControlEvents):
+    def __init__(self, queues:QueueContainer, events:EventContainer):
         super().__init__()
-        self.sim_window = sim_window
-        self.engine = engine
+        self.queues = queues
         self.events = events
 
     def run(self):
         #create window
         self.window = tk.Tk()
         self.window.title("Orbit Control")
-        self.window.geometry(f"{WINDOW_WIDTH}x{self.sim_window.height}+{self.sim_window.pos_x-WINDOW_WIDTH-10}+{self.sim_window.pos_y - 30}")
+        self.window.geometry(f"{WINDOW_WIDTH}x{WINDOW_HEIGHT}+{WINDOW_POS_X}+{WINDOW_POS_Y}")
         self.window.resizable(False, False)
         #define function to be called when window is closed
         self.window.protocol("WM_DELETE_WINDOW", self.on_close)
         self.font = ("Arial", 15)
 
+        self.create_labels()
+
+        self.update()
+        self.window.mainloop()
+
+    def update(self):
+        #timestep = self.queues.timestep.receive(timestep)
+
+        self.update_body_information()
+
+        #check if other window was closed and if so, close myself
+        if self.events.stop.is_set():
+            self.stop()
+            return
+        
+        #call function again after delay
+        self.window.after(int(orbit.gravity_engine.UPDATE_RATE * 1000), self.update)
+
+    def create_labels(self):
         #main frame container
         self.body_frame = tk.Frame(self.window)
         self.body_frame.grid(pady=20)
@@ -106,9 +126,8 @@ class ControlWindow(threading.Thread):
         #Dropdown menu
         row += 1
         tk.Label(self.body_frame, text="Presets", font=self.font, width=10).grid(row=row, column=0, padx=0, pady=(30, 0))
-        self.presets = orbit.presets.PRESETS
-        self.selected_preset = tk.StringVar(value=self.presets[2])
-        self.menu_presets = tk.OptionMenu(self.body_frame, self.selected_preset, *self.presets)
+        self.selected_preset = tk.StringVar(value=orbit.presets.PRESETS[2])
+        self.menu_presets = tk.OptionMenu(self.body_frame, self.selected_preset, *orbit.presets.PRESETS)
         self.menu_presets.config(width=13, height=1, font=self.font)
         self.menu_presets.grid(row=row, column=1, columnspan=2, padx=0, pady=(30, 0))
         menu = self.window.nametowidget(self.menu_presets.menuname)
@@ -117,39 +136,21 @@ class ControlWindow(threading.Thread):
         self.button_load_preset = tk.Button(self.body_frame, text="Load Preset", command=self.button_load_preset_func, width=20, height=2, font=self.font)
         self.button_load_preset.grid(row=row, column=0, columnspan=3, padx=0, pady=(5, 0))
 
-        self.update()
-        self.window.mainloop()
-
-    def update(self):
-        #set window left of simulation window location
-        self.window.geometry(f"{WINDOW_WIDTH}x{self.sim_window.height}+{self.sim_window.pos_x-WINDOW_WIDTH-10}+{self.sim_window.pos_y - 30}")
-
-        # if self.marked_event.is_set():
-        #     self.update_body_information()
-        #     self.marked_event.clear()
-        if self.events.running.is_set():
-            self.update_body_information()
-
-
-        #check if other window was closed and if so, close myself
-        if self.events.stop.is_set():
-            self.stop()
-            return
-        #call function again after delay
-        self.window.after(int(orbit.gravity_engine.UPDATE_RATE* 1000), self.update)
-
     def update_body_information(self):
-        self.set_entry_text(self.entry_body_index, str(self.sim_window.marked_body))
-        if self.sim_window.marked_body != None:
-            mass, pos_x, pos_y, vel_x, vel_y = self.engine.get_body_information(self.sim_window.marked_body)
-        else:
-            mass, pos_x, pos_y, vel_x, vel_y = 0, 0, 0, 0, 0
-        rounding = 6
-        self.set_entry_text(self.entry_body_mass, str(round(mass, rounding)))
-        self.set_entry_text(self.entry_body_pos_x, str(round(pos_x, rounding)))
-        self.set_entry_text(self.entry_body_pos_y, str(round(pos_y, rounding)))
-        self.set_entry_text(self.entry_body_vel_x, str(round(vel_x, rounding)))
-        self.set_entry_text(self.entry_body_vel_y, str(round(vel_y, rounding)))
+        marked_body_data = self.queues.marked_body.receive([0, 0, 0, 0, 0, 0])
+        rounding = 4
+        if self.entry_body_index.get() != str(marked_body_data[0]):
+            self.set_entry_text(self.entry_body_index, str(marked_body_data[0]))
+        if self.entry_body_mass.get() != str(round(marked_body_data[1], rounding)):
+            self.set_entry_text(self.entry_body_mass, str(round(marked_body_data[1], rounding)))
+        if self.entry_body_pos_x.get() != str(round(marked_body_data[2], rounding)):
+            self.set_entry_text(self.entry_body_pos_x, str(round(marked_body_data[2], rounding)))
+        if self.entry_body_pos_y.get() != str(round(marked_body_data[3], rounding)):
+            self.set_entry_text(self.entry_body_pos_y, str(round(marked_body_data[3], rounding)))
+        if self.entry_body_vel_x.get() != str(round(marked_body_data[4], rounding)):
+            self.set_entry_text(self.entry_body_vel_x, str(round(marked_body_data[4], rounding)))
+        if self.entry_body_vel_y.get() != str(round(marked_body_data[5], rounding)):
+            self.set_entry_text(self.entry_body_vel_y, str(round(marked_body_data[5], rounding)))
 
     def button_upd_body_func(self):
         print("Updating Body")
@@ -161,8 +162,8 @@ class ControlWindow(threading.Thread):
         print("Deleting Body")
 
     def button_load_preset_func(self):
-        self.preset_event.set()
-        self.engine.set_preset(self.selected_preset.get())
+        self.queues.selected_preset.send(self.selected_preset.get())
+        self.events.load_preset.set()
 
     def set_entry_text(self, entry:tk.Entry, text):
         entry.delete(0, tk.END)

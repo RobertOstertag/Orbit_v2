@@ -8,9 +8,8 @@ import math
 import copy
 import time
 import threading
-import queue
 
-from orbit.utils import Vector2D, Color, ControlEvents
+from orbit.utils import Vector2D, Color, EventContainer, QueueContainer
 import orbit.presets
 
 UPDATE_RATE = 1/60.0
@@ -31,12 +30,12 @@ class CelestialBody:
         self.color = Color(color_h, color_s, color_v)
 
 class GravityEngine(threading.Thread):
-    def __init__(self, alghorithm, body_pos_queue:queue.Queue, events:ControlEvents):
+    def __init__(self, alghorithm, queues:QueueContainer, events:EventContainer):
         super().__init__()
         #0=Euler, 1=Verlet Integration, 2=Velocity Verlet Integration
         self.alghorithm = alghorithm
         #queue
-        self.body_pos_queue = body_pos_queue
+        self.queues = queues
         #save references to all events
         self.events = events
         #timestep per engine call
@@ -46,7 +45,7 @@ class GravityEngine(threading.Thread):
         #for color picking when new bodies are added
         self.hue = 0
         #for time measurement how long the simulation took
-        self.simulation_time = 0
+        self.simulation_duration = 0
         #for preset loading
         self.preset = orbit.presets.PRESETS[2]
         self.events.load_preset.set()
@@ -91,15 +90,12 @@ class GravityEngine(threading.Thread):
             elif (self.alghorithm == 3):
                 self.runge_kutta_4_method()
 
+            self.simulation_duration = time.perf_counter() - start_time
 
-            #delete remaining queue object if possible
-            try: self.body_pos_queue.get_nowait()
-            except queue.Empty: pass
-            #put new bodies into queue
-            self.body_pos_queue.put_nowait(self.body_list)
-            
-            self.simulation_time = time.perf_counter() - start_time
-
+            #send data into queues
+            self.queues.bodies.send(self.body_list)
+            self.queues.engine_timestep.send(self.dt)
+            self.queues.engine_duration.send(self.simulation_duration)
 
     def euler_method(self):
         self.calculate_acc(self.body_list)
@@ -118,7 +114,7 @@ class GravityEngine(threading.Thread):
         for body in self.body_list:
             #pos(t+dt) = 2*pos(t) - pos(t-dt) + a*dt^2
             new_pos = (body.pos * 2) - body.prev_pos + (body.acc * self.dt * self.dt)
-            body.prev_pos = copy.deepcopy(body.pos)
+            body.prev_pos = body.pos
             body.pos = new_pos
 
             #not needed for verlet integration but used for energy calculation and other evaluations
@@ -179,7 +175,7 @@ class GravityEngine(threading.Thread):
         direction_norm_y = 0.0
 
         for body in body_list:
-            body.prev_acc = copy.deepcopy(body.acc)
+            body.prev_acc = body.acc
             body.acc = Vector2D(0.0, 0.0)
 
         i = 0
@@ -237,9 +233,9 @@ class GravityEngine(threading.Thread):
             
     def handle_presets(self):
         if self.events.load_preset.is_set():
-            self.events.load_preset.clear()
             #delete all bodies
             self.body_list.clear()
+            self.preset = self.queues.selected_preset.receive(self.preset)
             #get new preset
             match self.preset:
                 case "Simple":
@@ -258,15 +254,18 @@ class GravityEngine(threading.Thread):
                     preset_list = orbit.presets.BROUCKE_4
                 case "Sheen 1":
                     preset_list = orbit.presets.SHEEN_1
+                case _:
+                    preset_list = orbit.presets.SIMPLE
 
+            self.hue = 0
             #add all bodies from presets to body_list
-            for index, preset_body in enumerate(range(len(preset_list))):
+            for index, _ in enumerate(range(len(preset_list))):
                 self.add_body(preset_list[index][0], preset_list[index][1], preset_list[index][2], preset_list[index][3], preset_list[index][4])
             
-            self.hue = 0
-
             #notify simulation window to redraw everything
             self.events.initialize.set()
+            #clear event
+            self.events.load_preset.clear()
 
     def handle_dt(self):
         if self.events.dt_increment.is_set():
@@ -296,20 +295,18 @@ class GravityEngine(threading.Thread):
         new_vel = temp_vel * scale
         body.prev_pos = body.pos - new_vel
 
-    def get_body_information(self, index):
-        if index < len(self.body_list):
-            mass = self.body_list[index].mass
-            pos_x = self.body_list[index].pos.x
-            pos_y = self.body_list[index].pos.y
-            vel_x = self.body_list[index].vel.x
-            vel_y = self.body_list[index].vel.y
-            return (mass, pos_x, pos_y, vel_x, vel_y)
-        else:
-            return (0, 0, 0, 0, 0)
-    
-    def set_preset(self, preset_name):
-        self.preset = preset_name
+    def get_system_energy(self, body_list):
+        kinetic = 0
+        potential = 0
+        for body in body_list:
+            kinetic += 0.5 * body.mass * body.vel.magnitude() * body.vel.magnitude()
 
+        for i, body in enumerate(body_list):
+            for j, other_body in enumerate(body_list):
+                #only calculate half of every combination because it is redundant
+                if i < j:
+                    potential -= (body.mass * other_body.mass) / (body.pos - other_body.pos).magnitude()
+        return kinetic + potential
 
 if __name__ == "__main__":
     print("This is the gravity engine")

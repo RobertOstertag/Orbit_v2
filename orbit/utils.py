@@ -1,5 +1,6 @@
 import math
 import threading
+import queue
 
 class Vector2D:
     def __init__(self, x:float, y:float):
@@ -92,8 +93,37 @@ class Color:
             if i >= 6: return [0, 0, 0]
         else: return [v, v, v]
 
+class MyQueue:
+    def __init__(self):
+        self.queue = queue.Queue(1)
+    
+    def send(self, input):
+        #empty the queue
+        try: self.queue.get_nowait()
+        except queue.Empty: pass
+        #put data into queue
+        try: self.queue.put_nowait(input)
+        except queue.Full: pass
 
-class ControlEvents:
+    def receive(self, fallback):
+        #empty the queue
+        try: data = self.queue.get_nowait()
+        #if already empty return given output again
+        except queue.Empty: return fallback
+        #put the same data back into queue
+        try: self.queue.put_nowait(data)
+        except queue.Full: pass
+        return data
+
+class QueueContainer:
+    def __init__(self):
+        self.bodies = MyQueue()
+        self.engine_timestep = MyQueue()
+        self.engine_duration = MyQueue()
+        self.marked_body = MyQueue()
+        self.selected_preset = MyQueue()
+
+class EventContainer:
     def __init__(self):
         self.stop = threading.Event()
         self.initialize = threading.Event()

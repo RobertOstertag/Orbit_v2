@@ -4,25 +4,23 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.append(str(project_root))
 
-import threading
 import time
-import queue
 
 from orbit.gravity_engine import GravityEngine
 from orbit.simulation_window import SimulationWindow
 from orbit.control_window import ControlWindow
-from orbit.utils import ControlEvents
+from orbit.utils import EventContainer, QueueContainer
 
 
 def main():
-    events = ControlEvents()
-    body_pos_queue = queue.Queue(1)
+    events = EventContainer()
+    queues = QueueContainer()
 
     #create simulation framework
     alghorithm = 3
-    gravity_engine = GravityEngine(alghorithm, body_pos_queue, events)
-    simulation_window = SimulationWindow(gravity_engine, True, body_pos_queue, events)
-    control_window = ControlWindow(simulation_window, gravity_engine, events)
+    gravity_engine = GravityEngine(alghorithm, queues, events)
+    simulation_window = SimulationWindow(True, queues, events)
+    control_window = ControlWindow(queues, events)
 
     #start all threads
     gravity_engine.start()
