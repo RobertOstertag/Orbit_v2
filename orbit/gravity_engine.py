@@ -9,7 +9,7 @@ import copy
 import time
 import threading
 
-from orbit.utils import Vector2D, Color, EventContainer, QueueContainer
+from orbit.utils import Vector2D, Interface, CelestialBody
 import orbit.presets
 
 UPDATE_RATE = 1/60.0
@@ -18,26 +18,13 @@ START_DT = 0.01
 #value how much dt is changed when +/- is pressed
 DT_CHANGE = 0.01
     
-class CelestialBody:
-    def __init__(self, pos:Vector2D, vel:Vector2D, mass, radius, color_h = 360, color_s = 1.0, color_v = 1.0):
-        self.pos = pos
-        self.vel = vel
-        self.acc = Vector2D(0.0, 0.0)
-        self.prev_pos = self.pos - vel #only used for verlet integration
-        self.prev_acc = Vector2D(0.0, 0.0) #used for velocity verlet integration
-        self.mass = mass
-        self.radius = radius
-        self.color = Color(color_h, color_s, color_v)
-
 class GravityEngine(threading.Thread):
-    def __init__(self, alghorithm, queues:QueueContainer, events:EventContainer):
+    def __init__(self, alghorithm, interface:Interface):
         super().__init__()
         #0=Euler, 1=Verlet Integration, 2=Velocity Verlet Integration
         self.alghorithm = alghorithm
-        #queue
-        self.queues = queues
-        #save references to all events
-        self.events = events
+        #interface for data communication
+        self.interface = interface
         #timestep per engine call
         self.dt = START_DT
         #list of all celestial bodies in the simulation
@@ -46,18 +33,16 @@ class GravityEngine(threading.Thread):
         self.hue = 0
         #for time measurement how long the simulation took
         self.simulation_duration = 0
-        #for preset loading
-        self.preset = orbit.presets.PRESETS[2]
-        self.events.load_preset.set()
-
-        self.events.running.set()
+        #set engine to running state
+        self.interface.events.running.set()
+        self.interface.events.load_preset.set()
 
     def run(self):
         accumalator = 0
         last = time.perf_counter()
 
         #run engine until either simulation window or control window is closed
-        while not self.events.stop.is_set():
+        while not self.interface.events.stop.is_set():
             now = time.perf_counter()
             accumalator += now - last
             last = now
@@ -70,32 +55,33 @@ class GravityEngine(threading.Thread):
     def update(self):
         self.handle_presets()
         self.handle_dt()
+        self.handle_commands()
 
-        if self.events.running.is_set():
+        if self.interface.events.running.is_set():
             start_time = time.perf_counter()
 
-            #Euler Method
-            if (self.alghorithm == 0):
-                self.euler_method()
-
-            #Verlet Integration
-            elif (self.alghorithm == 1):
-                self.verlet_integration()
-
-            #Velocity Verlet Integration
-            elif (self.alghorithm == 2):
-                self.velocity_verlet_integration()
-
-            #Runge-Kutta 4 Method
-            elif (self.alghorithm == 3):
-                self.runge_kutta_4_method()
+            match self.alghorithm:
+                case 0:
+                    #Euler Method
+                    self.euler_method()
+                case 1:
+                    #Verlet Integration
+                    self.verlet_integration()
+                case 2:
+                    #Velocity Verlet Integration
+                    self.velocity_verlet_integration()
+                case 3:
+                    #Runge-Kutta 4 Method
+                    self.runge_kutta_4_method()
+                case _:
+                    self.runge_kutta_4_method()
 
             self.simulation_duration = time.perf_counter() - start_time
 
-            #send data into queues
-            self.queues.bodies.send(self.body_list)
-            self.queues.engine_timestep.send(self.dt)
-            self.queues.engine_duration.send(self.simulation_duration)
+            #send data into interface
+            self.interface.bodies.send(self.body_list)
+            self.interface.engine_timestep.send(self.dt)
+            self.interface.engine_duration.send(self.simulation_duration)
 
     def euler_method(self):
         self.calculate_acc(self.body_list)
@@ -219,7 +205,7 @@ class GravityEngine(threading.Thread):
             i += 1
 
     def add_body(self, pos_x, pos_y, vel_x, vel_y, mass):
-        body = CelestialBody(Vector2D(pos_x, pos_y), Vector2D(vel_x, vel_y), mass=mass, radius=math.sqrt(mass)+4, color_h=self.hue)
+        body = CelestialBody(Vector2D(pos_x, pos_y), Vector2D(vel_x, vel_y), mass=mass, radius=self.calc_radius(mass), color_h=self.hue)
         #rescale prev_pos if verlet integration is active
         if self.alghorithm == 1:
             self.update_prev_pos(body, self.dt)
@@ -232,10 +218,8 @@ class GravityEngine(threading.Thread):
             self.body_list.pop(index)
             
     def handle_presets(self):
-        if self.events.load_preset.is_set():
-            #delete all bodies
-            self.body_list.clear()
-            self.preset = self.queues.selected_preset.receive(self.preset)
+        if self.interface.events.load_preset.is_set():
+            self.preset = self.interface.selected_preset.receive()
             #get new preset
             match self.preset:
                 case "Simple":
@@ -257,32 +241,35 @@ class GravityEngine(threading.Thread):
                 case _:
                     preset_list = orbit.presets.SIMPLE
 
+            #delete all bodies
+            self.body_list.clear()
             self.hue = 0
             #add all bodies from presets to body_list
             for index, _ in enumerate(range(len(preset_list))):
                 self.add_body(preset_list[index][0], preset_list[index][1], preset_list[index][2], preset_list[index][3], preset_list[index][4])
             
             #notify simulation window to redraw everything
-            self.events.initialize.set()
+            self.interface.events.initialize_window.set()
+
             #clear event
-            self.events.load_preset.clear()
+            self.interface.events.load_preset.clear()
 
     def handle_dt(self):
-        if self.events.dt_increment.is_set():
+        if self.interface.events.dt_increment.is_set():
             #skip over 0.0
             if (math.isclose(self.dt + DT_CHANGE, 0.0, abs_tol=1e-5)):
                 self.change_dt(self.dt + (DT_CHANGE * 2))
             else:
                 self.change_dt(self.dt + DT_CHANGE)
-            self.events.dt_increment.clear()
+            self.interface.events.dt_increment.clear()
         
-        if self.events.dt_decrement.is_set():
+        if self.interface.events.dt_decrement.is_set():
             #skip over 0.0
             if (math.isclose(self.dt - DT_CHANGE, 0.0, abs_tol=1e-5)):
                 self.change_dt(self.dt - (DT_CHANGE * 2))
             else:
                 self.change_dt(self.dt - DT_CHANGE)
-            self.events.dt_decrement.clear()
+            self.interface.events.dt_decrement.clear()
 
     def change_dt(self, new_dt):
         #for Verlet Integration the previous position needs to be changed according to the change of dt
@@ -295,18 +282,50 @@ class GravityEngine(threading.Thread):
         new_vel = temp_vel * scale
         body.prev_pos = body.pos - new_vel
 
+    def calc_radius(self, mass):
+        return (math.sqrt(mass) + 4)
+
     def get_system_energy(self, body_list):
         kinetic = 0
         potential = 0
         for body in body_list:
+            # E_kin = 1/2 * mass * vel^2
             kinetic += 0.5 * body.mass * body.vel.magnitude() * body.vel.magnitude()
 
         for i, body in enumerate(body_list):
             for j, other_body in enumerate(body_list):
-                #only calculate half of every combination because it is redundant
+                #only calculate half of every combination
                 if i < j:
+                    #E_pot = (m1 * m2) / r
                     potential -= (body.mass * other_body.mass) / (body.pos - other_body.pos).magnitude()
         return kinetic + potential
 
+    def handle_commands(self):
+        if self.interface.events.delete_body.is_set():
+            user_input = self.interface.user_input.receive()
+            if user_input.index < len(self.body_list):
+                self.body_list.pop(user_input.index)
+                self.interface.events.delete_shape.set()
+            self.interface.events.delete_body.clear()
+        
+        if self.interface.events.add_body.is_set():
+            user_input = self.interface.user_input.receive()
+            self.add_body(user_input.pos.x, user_input.pos.y, user_input.vel.x, user_input.vel.y, user_input.mass)
+            self.interface.events.add_shape.set()
+            self.interface.events.add_body.clear()
+
+        if self.interface.events.update_body.is_set():
+            user_input = self.interface.user_input.receive()
+            if user_input.index < len(self.body_list):
+                self.body_list[user_input.index].mass = user_input.mass
+                self.body_list[user_input.index].radius = self.calc_radius(user_input.mass)
+                self.body_list[user_input.index].pos.x = user_input.pos.x
+                self.body_list[user_input.index].pos.y = user_input.pos.y
+                self.body_list[user_input.index].vel.x = user_input.vel.x
+                self.body_list[user_input.index].vel.y = user_input.vel.y
+                self.interface.events.update_shape.set()
+            self.interface.events.update_body.clear()
+
+            
 if __name__ == "__main__":
     print("This is the gravity engine")

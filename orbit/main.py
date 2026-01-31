@@ -9,18 +9,17 @@ import time
 from orbit.gravity_engine import GravityEngine
 from orbit.simulation_window import SimulationWindow
 from orbit.control_window import ControlWindow
-from orbit.utils import EventContainer, QueueContainer
+from orbit.utils import Interface
 
 
 def main():
-    events = EventContainer()
-    queues = QueueContainer()
+    interface = Interface()
 
     #create simulation framework
     alghorithm = 3
-    gravity_engine = GravityEngine(alghorithm, queues, events)
-    simulation_window = SimulationWindow(True, queues, events)
-    control_window = ControlWindow(queues, events)
+    gravity_engine = GravityEngine(alghorithm, interface)
+    simulation_window = SimulationWindow(True, interface)
+    control_window = ControlWindow(interface)
 
     #start all threads
     gravity_engine.start()

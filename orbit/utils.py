@@ -93,41 +93,81 @@ class Color:
             if i >= 6: return [0, 0, 0]
         else: return [v, v, v]
 
-class MyQueue:
-    def __init__(self):
-        self.queue = queue.Queue(1)
+class CelestialBody:
+    def __init__(self, pos:Vector2D, vel:Vector2D, mass, radius, color_h = 360, color_s = 1.0, color_v = 1.0):
+        self.pos = pos
+        self.vel = vel
+        self.acc = Vector2D(0.0, 0.0)
+        self.prev_pos = self.pos - vel #only used for verlet integration
+        self.prev_acc = Vector2D(0.0, 0.0) #used for velocity verlet integration
+        self.mass = mass
+        self.radius = radius
+        self.color = Color(color_h, color_s, color_v)
     
-    def send(self, input):
-        #empty the queue
-        try: self.queue.get_nowait()
-        except queue.Empty: pass
-        #put data into queue
-        try: self.queue.put_nowait(input)
-        except queue.Full: pass
+    def __eq__(self, other):
+        if self.mass == other.mass \
+        and self.pos.x == other.pos.x \
+        and self.pos.y == other.pos.y \
+        and self.vel.x == other.vel.x \
+        and self.vel.y == other.vel.y:
+            return True
+        else:
+            return False
 
-    def receive(self, fallback):
-        #empty the queue
-        try: data = self.queue.get_nowait()
-        #if already empty return given output again
-        except queue.Empty: return fallback
-        #put the same data back into queue
-        try: self.queue.put_nowait(data)
-        except queue.Full: pass
-        return data
-
-class QueueContainer:
+class UserInputData:
     def __init__(self):
-        self.bodies = MyQueue()
-        self.engine_timestep = MyQueue()
-        self.engine_duration = MyQueue()
-        self.marked_body = MyQueue()
-        self.selected_preset = MyQueue()
+        self.index = 0
+        self.mass = 0
+        self.pos = Vector2D(0, 0)
+        self.vel = Vector2D(0, 0)
+
+class InterfaceItem:
+    def __init__(self, initial=None, trigger=False):
+        self._value = initial
+        self._lock = threading.Lock()
+        self._trigger = trigger
+    
+    def send(self, value):
+        with self._lock:
+            self._value = value
+
+    def receive(self):
+        with self._lock:
+            return self._value
+    
+    def trigger(self):
+        with self._lock:
+            self._trigger = True
+
+    def is_triggered(self):
+        with self._lock:
+            return_val = self._trigger
+            self._trigger = False
+            return return_val
+
+class Interface:
+    def __init__(self):
+        self.bodies = InterfaceItem()
+        self.engine_timestep = InterfaceItem(0)
+        self.engine_duration = InterfaceItem(0)
+        self.marked_body_index = InterfaceItem(0)
+        self.selected_preset = InterfaceItem("Figure Eight", True)
+        self.user_input = InterfaceItem()
+
+        self.events = EventContainer()
 
 class EventContainer:
     def __init__(self):
         self.stop = threading.Event()
-        self.initialize = threading.Event()
+        self.initialize_window = threading.Event()
         self.running = threading.Event()
         self.load_preset = threading.Event()
         self.dt_increment = threading.Event()
-        self.dt_decrement =threading.Event()
+        self.dt_decrement = threading.Event()
+        #user input
+        self.add_body = threading.Event()
+        self.delete_body = threading.Event()
+        self.update_body = threading.Event()
+        self.add_shape = threading.Event()
+        self.delete_shape = threading.Event()
+        self.update_shape = threading.Event()

@@ -10,9 +10,8 @@ import threading
 import time
 
 import orbit.gravity_engine
-from orbit.gravity_engine import CelestialBody
 from orbit.data_logging import DataLogger
-from orbit.utils import EventContainer, QueueContainer
+from orbit.utils import Interface
 
 #initial window size
 WINDOW_WIDTH = 800
@@ -99,8 +98,8 @@ class World():
 class BodyShapes():
     def __init__(self, world:World, wx, wy, radius, color, batch):
         self.world = world
-        self.radius = radius / self.world.scaling
         sx, sy = self.world.world_to_screen(wx, wy)
+        self.radius = radius / self.world.scaling
         self.body = pyglet.shapes.Circle(sx, sy, radius=self.radius, color=color, batch=batch)
         self.trails = []
         for _ in range(TRAIL_LENGTH):
@@ -121,7 +120,7 @@ class BodyShapes():
         self.trails[self.trail_index].x2 = x
         self.trails[self.trail_index].y2 = y
         #check if body position moved a delta away from the last trail index
-        #ToDo: real distance calculation would be more ^^^^^^^^^^accurate but this will do for now
+        #ToDo: real distance calculation would be more accurate but this will do for now
         if ((math.fabs(x - self.trails[self.trail_index].x) >= TRAIL_DELTA * self.world.scaling) or
             (math.fabs(y - self.trails[self.trail_index].y) >= TRAIL_DELTA * self.world.scaling)):
             #get index of next line to be drawn
@@ -161,17 +160,16 @@ class BodyShapes():
 
     
 class SimulationWindow(threading.Thread):
-    def __init__(self, trail_active, queues:QueueContainer, events:EventContainer):
+    def __init__(self, trail_active, interface:Interface):
         super().__init__()
         self.trail_active = trail_active
-        self.queues = queues
-        self.events = events
+        self.interface = interface
 
         self.bodies = None
         self.body_shapes = []
         self.world = World(-1, +1, -1, +1, WINDOW_WIDTH, WINDOW_HEIGHT, 1.0)
         self.drawing_time = 0
-        self.marked_body_index = None
+        self.marked_body_index = 0
         self.data_logger = DataLogger()
 
     def run(self):
@@ -189,41 +187,32 @@ class SimulationWindow(threading.Thread):
 
     def update(self, dt):
         #check if window needs to be closed
-        if not self.events.stop.is_set():
+        if not self.interface.events.stop.is_set():
             #check if new body positions are available
-            self.bodies = self.queues.bodies.receive(self.bodies)
+            self.bodies = self.interface.bodies.receive()
+            #check if shapes need to be deleted or added
+            self.handle_commands()
 
             start_time = time.perf_counter()
             #update screen visuals
-            if ((self.events.running.is_set()) and
+            if ((self.interface.events.running.is_set()) and
                 (self.bodies != None)):
                 #initialize all shapes and other necessary parts when requested
                 self.initialize_if_needed(self.bodies)
 
                 #draw all bodies and trails
-                for body_index, body in enumerate(self.bodies):
-                    self.body_shapes[body_index].draw(body.pos.x, body.pos.y)
+                for index, shape in enumerate(self.body_shapes):
+                    shape.draw(self.bodies[index].pos.x, self.bodies[index].pos.y)
 
             self.drawing_time = time.perf_counter() - start_time
 
             #write logging information on the screen
             self.draw_log()
-
-            #send marked body information
-            mass, pos_x, pos_y, vel_x, vel_y = 0, 0, 0, 0, 0
-            if ((self.marked_body_index != None) and
-                (self.marked_body_index < len(self.bodies))):
-                mass  = self.bodies[self.marked_body_index].mass
-                pos_x = self.bodies[self.marked_body_index].pos.x
-                pos_y = self.bodies[self.marked_body_index].pos.y
-                vel_x = self.bodies[self.marked_body_index].vel.x
-                vel_y = self.bodies[self.marked_body_index].vel.y
-            self.queues.marked_body.send([self.marked_body_index, mass, pos_x, pos_y, vel_x, vel_y])
         else:
             self.stop()
 
     def initialize_if_needed(self, bodies):
-        if self.events.initialize.is_set():
+        if self.interface.events.initialize_window.is_set():
             #resize simulation size to show all initial positions of celestial bodies
             self.world_resize(bodies)
 
@@ -234,10 +223,10 @@ class SimulationWindow(threading.Thread):
                 self.body_shapes.append(BodyShapes(self.world, body.pos.x, body.pos.y, body.radius, body.color.get_rgb_8bit(), self.batch))
 
             #clear event
-            self.events.initialize.clear()
+            self.interface.events.initialize_window.clear()
 
     def draw_log(self):
-        log_string = self.data_logger.get_string(self.queues.engine_duration.receive(0), self.drawing_time, self.queues.engine_timestep.receive(0))
+        log_string = self.data_logger.get_string(self.interface.engine_duration.receive(), self.drawing_time, self.interface.engine_timestep.receive())
         self.label = pyglet.text.Label(
                         log_string, font_name='Consolas', font_size=12,
                         x=10, y=self.world.screen_height-10, anchor_x='left', anchor_y='top',
@@ -268,7 +257,6 @@ class SimulationWindow(threading.Thread):
         for body_shape in self.body_shapes:
             body_shape.shift(dx, dy)
 
-
     def on_resize(self, new_width, new_height):
         self.world.resize(new_width, new_height)
 
@@ -284,32 +272,53 @@ class SimulationWindow(threading.Thread):
 
     def on_key_press(self, symbol, modifiers):
         if symbol == pyglet.window.key.SPACE:
-            if self.events.running.is_set():
-                self.events.running.clear()
+            if self.interface.events.running.is_set():
+                self.interface.events.running.clear()
             else:
-                self.events.running.set()
+                self.interface.events.running.set()
 
         elif (symbol == pyglet.window.key.PLUS) or (symbol == pyglet.window.key.NUM_ADD):
-            self.events.dt_increment.set()
+            self.interface.events.dt_increment.set()
 
         elif (symbol == pyglet.window.key.MINUS) or (symbol == pyglet.window.key.NUM_SUBTRACT):
-            self.events.dt_decrement.set()
+            self.interface.events.dt_decrement.set()
 
     def on_mouse_press(self, x, y, button, modifiers):
         #on mouse left click
         if (button == 1):
-           self.marked_body_index = self.find_body(x, y, self.body_shapes)
+            self.marked_body_index = self.find_body(x, y, self.body_shapes)
+            self.interface.marked_body_index.send(self.marked_body_index)
 
     def find_body(self, x, y, body_shapes):
         for i, body in enumerate(body_shapes):
             if ((x >= body.body.x - body.body.radius) and (x <= body.body.x + body.body.radius) and
                 (y >= body.body.y - body.body.radius) and (y <= body.body.y + body.body.radius)):
                 return i
-        return None
+        #if no valid body is found, return current body
+        return self.marked_body_index
 
+    def handle_commands(self):
+            #body shape needs to be deleted
+            if self.interface.events.delete_shape.is_set():
+                user_input = self.interface.user_input.receive()
+                self.body_shapes.pop(user_input.index)
+                self.interface.events.delete_shape.clear()
+            #body shape needs to be added
+            if self.interface.events.add_shape.is_set():
+                user_input = self.interface.user_input.receive()
+                new_body = self.bodies[-1]
+                self.body_shapes.append(BodyShapes(self.world, new_body.pos.x, new_body.pos.y, new_body.radius, new_body.color.get_rgb_8bit(), self.batch))
+                self.interface.events.add_shape.clear()
+            #update body shape but only radius necessary
+            if self.interface.events.update_shape.is_set():
+                user_input = self.interface.user_input.receive()
+                self.body_shapes[user_input.index].radius = self.bodies[user_input.index].radius / self.world.scaling
+                self.body_shapes[user_input.index].draw(self.bodies[user_input.index].pos.x, self.bodies[user_input.index].pos.y)
+                self.interface.events.update_shape.clear()
+                
     def on_close(self):
         #notify other thread that this window is closed
-        self.events.stop.set()
+        self.interface.events.stop.set()
         self.stop()
 
     def stop(self):
